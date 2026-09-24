@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useOutletContext } from 'react-router-dom';
 import { getSales, createSale, getBatches, exportSales, asArray } from '../lib/api';
 import { formatKES, formatGrams, formatDate } from '../lib/format';
+import { SalesIcon } from '../components/icons.jsx';
 
 const empty = { batchId: '', gramsSold: '', sellingPricePerGram: '', saleDate: '' };
 
 export default function Sales() {
+  const { query = '' } = useOutletContext() ?? {};
   const [sales, setSales] = useState([]);
   const [openBatches, setOpenBatches] = useState([]);
   const [form, setForm] = useState(empty);
@@ -13,10 +16,19 @@ export default function Sales() {
   const [exporting, setExporting] = useState(false);
 
   const load = () => {
-    getSales().then((res) => setSales(asArray(res.data)));
-    getBatches({ status: 'OPEN' }).then((res) => setOpenBatches(asArray(res.data)));
+    getSales().then((res) => setSales(asArray(res.data))).catch(() => {});
+    getBatches({ status: 'OPEN' }).then((res) => setOpenBatches(asArray(res.data))).catch(() => {});
   };
   useEffect(load, []);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return sales;
+    return sales.filter((s) => `${s.batchNumber} ${s.batchId}`.toLowerCase().includes(q));
+  }, [sales, query]);
+
+  const totalRevenue = sales.reduce((a, s) => a + (Number(s.totalSellingPrice) || 0), 0);
+  const totalProfit = sales.reduce((a, s) => a + (Number(s.profitLoss) || 0), 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,60 +64,66 @@ export default function Sales() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="font-display text-2xl text-bone">Sales</h1>
-        <button onClick={handleExport} disabled={exporting} className="text-xs border border-hair rounded px-3 py-1.5 text-bonedim hover:text-bone hover:border-gold transition-colors duration-150">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Sales</h1>
+          <p className="text-[13px] text-[#8A8A8A]">{formatKES(totalRevenue)} revenue · <span className={totalProfit >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}>{formatKES(totalProfit)} profit</span></p>
+        </div>
+        <button onClick={handleExport} disabled={exporting} className="text-[13px] font-semibold border border-[#E3DCCB] rounded-full px-4 py-2 bg-white hover:border-black disabled:opacity-50">
           {exporting ? 'Preparing…' : 'Export .xlsx'}
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 mb-9 items-end">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-bonedim">Batch</label>
-          <select required value={form.batchId} onChange={(e) => setForm({ ...form, batchId: e.target.value })} className="w-48">
-            <option value="">Select a batch</option>
-            {openBatches.map((b) => (
-              <option key={b.id} value={b.id}>{b.batchNumber} — {b.itemName} ({formatGrams(b.gramsRemaining)} left)</option>
-            ))}
-          </select>
+      <form onSubmit={handleSubmit} className="card p-4 mb-3">
+        <p className="text-[13px] font-bold mb-3">Record sale</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C] lg:col-span-1">Batch
+            <select required value={form.batchId} onChange={(e) => setForm({ ...form, batchId: e.target.value })}>
+              <option value="">Select a batch</option>
+              {openBatches.map((b) => (
+                <option key={b.id} value={b.id}>{b.batchNumber} — {b.itemName} ({formatGrams(b.gramsRemaining)} left)</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">Grams sold
+            <input required type="number" step="0.01" value={form.gramsSold} onChange={(e) => setForm({ ...form, gramsSold: e.target.value })} placeholder="0.00" />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">Price / g (KES)
+            <input required type="number" step="0.01" value={form.sellingPricePerGram} onChange={(e) => setForm({ ...form, sellingPricePerGram: e.target.value })} placeholder="0.00" />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">Sale date
+            <input type="date" value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} />
+          </label>
+          <button type="submit" disabled={submitting} className="bg-black text-white px-4 py-2.5 text-[13px] font-semibold rounded-[10px] disabled:opacity-50 h-[42px]">
+            {submitting ? 'Recording…' : '+ Record sale'}
+          </button>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-bonedim">Grams sold</label>
-          <input required type="number" step="0.01" value={form.gramsSold} onChange={(e) => setForm({ ...form, gramsSold: e.target.value })} className="w-28" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-bonedim">Selling price / g (KES)</label>
-          <input required type="number" step="0.01" value={form.sellingPricePerGram} onChange={(e) => setForm({ ...form, sellingPricePerGram: e.target.value })} className="w-32" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-bonedim">Sale date</label>
-          <input type="date" value={form.saleDate} onChange={(e) => setForm({ ...form, saleDate: e.target.value })} className="w-40" />
-        </div>
-        <button type="submit" disabled={submitting} className="bg-gold text-iron px-4 py-2 text-sm font-medium rounded disabled:opacity-50">
-          {submitting ? 'Recording…' : 'Record sale'}
-        </button>
       </form>
 
-      <div className="ingot-head"><span>Sale</span><span>Grams · total · P/L</span></div>
-      <AnimatePresence initial={false}>
-        {sales.map((s) => (
-          <motion.div key={s.id} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="ingot-wrap">
-            <div className="ingot">
-              <span>
-                <span className="title">{s.batchNumber ?? s.batchId}</span>
-                <span className="sub">{formatDate(s.saleDate)}</span>
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[14px] font-bold">All sales</h2>
+          <span className="text-[12px] text-[#8A8A8A]">Grams · total · P/L</span>
+        </div>
+        <AnimatePresence initial={false}>
+          {filtered.map((s) => (
+            <motion.div key={s.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-3 py-3 border-b border-[#F1EDE2] last:border-0">
+              <span className="w-10 h-10 rounded-xl bg-[#FFF0E3] text-[#E8620C] flex items-center justify-center shrink-0"><SalesIcon className="w-5 h-5" /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13px] font-semibold truncate">{s.batchNumber ?? s.batchId}</span>
+                <span className="block text-[12px] text-[#8A8A8A]">{formatDate(s.saleDate)} · {formatGrams(s.gramsSold)}</span>
               </span>
-              <span className="meta tabular">
-                {formatGrams(s.gramsSold)} · {formatKES(s.totalSellingPrice)}<br />
-                <span className={s.profitLoss >= 0 ? 'figure-positive' : 'figure-negative'}>
-                  {s.profitLoss >= 0 ? '+' : ''}{formatKES(s.profitLoss)}
+              <span className="text-right shrink-0">
+                <span className="block text-[13px] font-bold tabular">{formatKES(s.totalSellingPrice)}</span>
+                <span className={`inline-block mt-0.5 badge ${(s.profitLoss ?? 0) >= 0 ? 'badge-green' : 'badge-red'} tabular`}>
+                  {(s.profitLoss ?? 0) >= 0 ? '+' : ''}{formatKES(s.profitLoss)}
                 </span>
               </span>
-            </div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-      {sales.length === 0 && <p className="text-bonedim text-sm mt-4">No sales recorded yet.</p>}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {filtered.length === 0 && <p className="text-[13px] text-[#8A8A8A] py-8 text-center">No sales recorded yet.</p>}
+      </div>
     </div>
   );
 }
