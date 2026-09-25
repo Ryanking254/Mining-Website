@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getMe, loginUser, registerUser } from './api';
+import { getMe, loginUser, registerUser, googleLoginUser, verify2faLogin } from './api';
 import { AuthContext } from './auth-context.jsx';
 
 function readStoredUser() {
@@ -43,12 +43,30 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (payload) => {
     const { data } = await loginUser(payload);
+    // Accounts with 2FA enabled get { requires2fa, pendingToken } — no session yet.
+    if (data?.requires2fa) return data;
     saveSession(data);
-    return data.user;
+    return data;
   }, []);
 
   const register = useCallback(async (payload) => {
     const { data } = await registerUser(payload);
+    if (data?.requires2fa) return data;
+    saveSession(data);
+    return data;
+  }, []);
+
+  const loginWithGoogle = useCallback(async (idToken) => {
+    const { data } = await googleLoginUser(idToken);
+    if (data?.requires2fa) return data;
+    saveSession(data);
+    return data;
+  }, []);
+
+  const verify2fa = useCallback(async (pendingToken, code, { isBackup = false } = {}) => {
+    const { data } = await verify2faLogin(
+      isBackup ? { pendingToken, backupCode: code } : { pendingToken, code }
+    );
     saveSession(data);
     return data.user;
   }, []);
@@ -74,8 +92,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, logout, isAuthed: !!token && !!user }),
-    [user, token, loading, login, register, logout]
+    () => ({ user, token, loading, login, register, loginWithGoogle, verify2fa, logout, isAuthed: !!token && !!user }),
+    [user, token, loading, login, register, loginWithGoogle, verify2fa, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

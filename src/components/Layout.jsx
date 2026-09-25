@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   OverviewIcon, BatchesIcon, SalesIcon, LoansIcon,
-  ExpendituresIcon, WithdrawalsIcon, SunIcon,
+  ExpendituresIcon, WithdrawalsIcon, SecurityIcon, SunIcon,
   MoonIcon, SearchIcon, LogoutIcon, MenuIcon, DownloadIcon,
 } from './icons.jsx';
 import { exportSales } from '../lib/api';
@@ -15,6 +15,7 @@ const links = [
   { to: '/loans', label: 'Loans', Icon: LoansIcon },
   { to: '/expenditures', label: 'Expenditures', Icon: ExpendituresIcon },
   { to: '/withdrawals', label: 'Withdrawals', Icon: WithdrawalsIcon },
+  { to: '/security', label: 'Security', Icon: SecurityIcon },
 ];
 
 function getInitialTheme() {
@@ -164,7 +165,11 @@ export default function Layout() {
               </button>
 
               <div className="user-chip" title={user?.email || ''}>
-                <div className="user-avatar">{initial}</div>
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="" className="user-avatar object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="user-avatar">{initial}</div>
+                )}
                 <span className="text-[13px] font-medium hidden md:block">{displayName}</span>
               </div>
             </div>

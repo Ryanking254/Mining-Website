@@ -38,7 +38,15 @@ api.interceptors.response.use(
 // --- Auth ---
 export const loginUser = (payload) => api.post('/auth/login', payload);
 export const registerUser = (payload) => api.post('/auth/register', payload);
+export const googleLoginUser = (idToken) => api.post('/auth/google', { idToken });
+export const verify2faLogin = (payload) => api.post('/auth/2fa/verify-login', payload);
 export const getMe = () => api.get('/auth/me');
+
+// --- 2FA (Google Authenticator / any TOTP app) ---
+export const get2faStatus = () => api.get('/auth/2fa/status');
+export const setup2fa = () => api.post('/auth/2fa/setup');
+export const confirm2fa = (code) => api.post('/auth/2fa/confirm', { code });
+export const disable2fa = (payload) => api.post('/auth/2fa/disable', payload);
 
 // --- Batches ---
 export const getBatches = (params) => api.get('/batches', { params });

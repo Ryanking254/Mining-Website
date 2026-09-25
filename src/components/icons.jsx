@@ -162,3 +162,14 @@ export function DownloadIcon(props) {
     </>
   );
 }
+
+export function SecurityIcon(props) {
+  // shield with check — 2FA / security
+  return base(
+    props,
+    <>
+      <path d="M12 2.8 19.5 5.5v6c0 4.5-3.2 7.8-7.5 9.7-4.3-1.9-7.5-5.2-7.5-9.7v-6L12 2.8Z" />
+      <path d="m9 11.8 2.2 2.2 3.8-4.2" />
+    </>
+  );
+}

@@ -7,6 +7,7 @@ import Sales from './pages/Sales.jsx';
 import Loans from './pages/Loans.jsx';
 import Expenditures from './pages/Expenditures.jsx';
 import Withdrawals from './pages/Withdrawals.jsx';
+import Security from './pages/Security.jsx';
 import Login from './pages/Login.jsx';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="loans" element={<Loans />} />
         <Route path="expenditures" element={<Expenditures />} />
         <Route path="withdrawals" element={<Withdrawals />} />
+        <Route path="security" element={<Security />} />
       </Route>
     </Routes>
   );

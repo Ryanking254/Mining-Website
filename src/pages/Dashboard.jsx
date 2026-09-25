@@ -11,7 +11,12 @@ import {
 import { formatKES, formatGrams, formatDate } from '../lib/format';
 import { SalesIcon } from '../components/icons.jsx';
 
-const ranges = ['daily', 'weekly', 'monthly'];
+const toISO = (d) => d.toISOString().slice(0, 10);
+const monthsAgoISO = (n) => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - n);
+  return toISO(d);
+};
 
 function Kpi({ label, value }) {
   return (
@@ -26,35 +31,60 @@ function Kpi({ label, value }) {
 
 export default function Dashboard() {
   const [capital, setCapital] = useState(null);
-  const [range, setRange] = useState('monthly');
+  const [bucket, setBucket] = useState('monthly');
+  const [from, setFrom] = useState(() => monthsAgoISO(6));
+  const [to, setTo] = useState(() => toISO(new Date()));
   const [salesSummary, setSalesSummary] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [batches, setBatches] = useState([]);
   const [loans, setLoans] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState('');
 
+  const dateWindowValid = from && to && from <= to;
+
+  // Static ledger data — loaded once.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch on range change needs a loading flag
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load needs a loading flag
     setLoading(true);
     Promise.all([
       getCapital().catch(() => ({ data: null })),
-      getSalesSummary({ range }).catch(() => ({ data: [] })),
       getSales().catch(() => ({ data: [] })),
       getBatches().catch(() => ({ data: [] })),
       getLoans().catch(() => ({ data: [] })),
       getExpenditures().catch(() => ({ data: [] })),
     ])
-      .then(([cap, sum, sales, bat, loan, exp]) => {
+      .then(([cap, sales, bat, loan, exp]) => {
         setCapital(cap.data);
-        setSalesSummary(asArray(sum.data));
         setRecentSales(asArray(sales.data).slice(0, 5));
         setBatches(asArray(bat.data).slice(0, 3));
         setLoans(asArray(loan.data).filter((l) => l.status !== 'REPAID').slice(0, 3));
         setExpenses(asArray(exp.data));
       })
       .finally(() => setLoading(false));
-  }, [range]);
+  }, []);
+
+  // Sales Overview chart — refetches whenever the calendar window changes.
+  useEffect(() => {
+    if (!dateWindowValid) {
+      setSalesSummary([]);
+      setSummaryError(from && to && from > to ? 'Start date must be on or before end date.' : '');
+      return;
+    }
+    setSummaryError('');
+    let cancelled = false;
+    getSalesSummary({ from, to, bucket })
+      .then((res) => {
+        if (!cancelled) setSalesSummary(asArray(res.data));
+      })
+      .catch(() => {
+        if (!cancelled) setSalesSummary([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to, bucket, dateWindowValid]);
 
   const total = capital?.currentCapital ?? capital?.total ?? 0;
   const breakdown = capital?.breakdown ?? {};
