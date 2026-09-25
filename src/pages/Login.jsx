@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../lib/useAuth.jsx';
+import { getTwofaState } from '../lib/twofa';
 
 const googleConfigured = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -19,7 +20,24 @@ export default function Login({ initialMode = 'login' }) {
   const [twofaIsBackup, setTwofaIsBackup] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
+  // Post-signup choice — when the account has no authenticator yet and is
+  // still inside the grace period, offer setup now or later.
+  const [pendingSetup, setPendingSetup] = useState(null); // { daysLeft } | null
+
   const done = () => navigate('/', { replace: true });
+
+  // After a password/Google sign-in that yields a session, decide whether to
+  // offer authenticator setup. Returns true when navigation/UI was handled.
+  const maybeOfferSetup = (data) => {
+    if (!data?.user || data.user.twofaEnabled) return false;
+    const st = getTwofaState(data.user);
+    if (st.overdue) {
+      navigate('/security', { replace: true });
+      return true;
+    }
+    setPendingSetup({ daysLeft: st.daysLeft });
+    return true;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,6 +50,7 @@ export default function Login({ initialMode = 'login' }) {
           setPendingToken(data.pendingToken);
           return;
         }
+        if (maybeOfferSetup(data)) return;
       } else {
         const data = await register({
           name: form.name.trim(),
@@ -42,6 +61,7 @@ export default function Login({ initialMode = 'login' }) {
           setPendingToken(data.pendingToken);
           return;
         }
+        if (maybeOfferSetup(data)) return;
       }
       done();
     } catch (err) {
@@ -65,6 +85,7 @@ export default function Login({ initialMode = 'login' }) {
         setPendingToken(data.pendingToken);
         return;
       }
+      if (maybeOfferSetup(data)) return;
       done();
     } catch (err) {
       setError(err?.response?.data?.error || 'Google sign-in failed. Try again.');
@@ -140,6 +161,39 @@ export default function Login({ initialMode = 'login' }) {
               className="text-[13px] text-[#8A8A8A] font-medium hover:underline"
             >
               Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Authenticator setup choice (grace period) ----
+  if (pendingSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="card p-6 w-full max-w-[400px]">
+          <h1 className="text-xl font-bold tracking-tight">Secure your account</h1>
+          <p className="text-[13px] text-[#8A8A8A] mt-1 mb-4 leading-snug">
+            Add Google Authenticator (or any authenticator app) as a second step.
+            It&apos;s optional for now but becomes compulsory —{' '}
+            <span className="font-semibold text-black">
+              {pendingSetup.daysLeft} day{pendingSetup.daysLeft === 1 ? '' : 's'} left
+            </span>
+            .
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => navigate('/security', { replace: true })}
+              className="bg-black text-white px-4 py-2.5 text-[14px] font-semibold rounded-[10px]"
+            >
+              Set up authenticator now
+            </button>
+            <button
+              onClick={done}
+              className="px-4 py-2.5 text-[14px] font-semibold rounded-[10px] border border-[#E3DCCB] hover:border-black"
+            >
+              I&apos;ll do it later
             </button>
           </div>
         </div>

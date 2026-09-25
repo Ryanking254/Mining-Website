@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import {
   OverviewIcon, BatchesIcon, SalesIcon, LoansIcon,
   ExpendituresIcon, WithdrawalsIcon, SecurityIcon, SunIcon,
@@ -7,6 +7,7 @@ import {
 } from './icons.jsx';
 import { exportSales } from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
+import { getTwofaState } from '../lib/twofa';
 
 const links = [
   { to: '/', label: 'Overview', end: true, Icon: OverviewIcon },
@@ -33,6 +34,11 @@ export default function Layout() {
   const [downloading, setDownloading] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  // Authenticator reminder — shown until 2FA is enabled. Dismissal lasts
+  // until the next reload; overdue accounts cannot dismiss it.
+  const [twofaDismissed, setTwofaDismissed] = useState(false);
+  const twofaReminder = user && !user.twofaEnabled ? getTwofaState(user) : null;
+  const showTwofaBanner = twofaReminder && (twofaReminder.overdue || !twofaDismissed);
 
   const displayName = user?.name || user?.email || 'User';
   const initial = (displayName || 'U').slice(0, 1).toUpperCase();
@@ -176,6 +182,40 @@ export default function Layout() {
           </header>
 
           <main className="main-body">
+            {showTwofaBanner && (
+              <div
+                className={`mb-3 flex items-center gap-3 rounded-[12px] px-4 py-3 text-[13px] ${
+                  twofaReminder.overdue
+                    ? 'bg-[#FDECEC] text-[#B42318]'
+                    : 'bg-[#FFFAEB] text-[#5C4B00] border border-[#FEDF89]'
+                }`}
+              >
+                <p className="flex-1 leading-snug">
+                  {twofaReminder.overdue ? (
+                    <><span className="font-bold">Authenticator setup is required.</span> Enable it now to keep using the ledger.</>
+                  ) : (
+                    <><span className="font-bold">Protect your account.</span> Add an authenticator app — compulsory in {twofaReminder.daysLeft} day{twofaReminder.daysLeft === 1 ? '' : 's'}.</>
+                  )}
+                </p>
+                <Link
+                  to="/security"
+                  className={`shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-[10px] ${
+                    twofaReminder.overdue ? 'bg-[#B42318] text-white' : 'bg-black text-white'
+                  }`}
+                >
+                  Set up now
+                </Link>
+                {!twofaReminder.overdue && (
+                  <button
+                    onClick={() => setTwofaDismissed(true)}
+                    aria-label="Dismiss reminder"
+                    className="shrink-0 text-[13px] font-medium opacity-70 hover:opacity-100"
+                  >
+                    Later
+                  </button>
+                )}
+              </div>
+            )}
             <Outlet context={{ query }} />
           </main>
         </div>

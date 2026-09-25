@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { get2faStatus, setup2fa, confirm2fa, disable2fa } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { get2faStatus, setup2fa, confirm2fa } from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
+import { getTwofaState } from '../lib/twofa';
 
 export default function Security() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
+  const twofa = getTwofaState(user);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -14,9 +18,6 @@ export default function Security() {
   const [code, setCode] = useState('');
   const [backupCodes, setBackupCodes] = useState([]);
   const [working, setWorking] = useState(false);
-
-  // Disable flow
-  const [disableCode, setDisableCode] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -51,31 +52,17 @@ export default function Security() {
     e.preventDefault();
     setError(''); setSuccess(''); setWorking(true);
     try {
+      const wasOverdue = !getTwofaState(user).enabled && getTwofaState(user).overdue;
       const { data } = await confirm2fa(code.trim());
       setBackupCodes(data.backupCodes || []);
       setSetup(null);
       setCode('');
       setSuccess('Two-factor authentication is now enabled.');
       await load();
+      try { await refreshUser(); } catch { /* ignore — status already reloaded */ }
+      if (wasOverdue) navigate('/', { replace: true });
     } catch (err) {
       setError(err?.response?.data?.error || 'Invalid code. Try again.');
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const handleDisable = async (e) => {
-    e.preventDefault();
-    setError(''); setSuccess(''); setWorking(true);
-    try {
-      await disable2fa({ code: disableCode.trim() });
-      setDisableCode('');
-      setSetup(null);
-      setBackupCodes([]);
-      setSuccess('Two-factor authentication has been disabled.');
-      await load();
-    } catch (err) {
-      setError(err?.response?.data?.error || 'Could not disable 2FA. Check the code.');
     } finally {
       setWorking(false);
     }
@@ -108,6 +95,23 @@ export default function Security() {
               {status?.enabled ? 'ON' : 'OFF'}
             </span>
           </div>
+
+          {user && !twofa.enabled && twofa.overdue && (
+            <p className="text-[13px] font-medium text-[#B42318] bg-[#FDECEC] rounded-[10px] px-3 py-2 mt-4">
+              Authenticator setup is required — your grace period has ended. Enable it below to keep using the ledger.
+            </p>
+          )}
+          {user && !twofa.enabled && !twofa.overdue && (
+            <p className="text-[13px] font-medium text-[#5C4B00] bg-[#FFFAEB] border border-[#FEDF89] rounded-[10px] px-3 py-2 mt-4">
+              Reminder: the authenticator app becomes compulsory {twofa.graceDays} days after account creation
+              ({twofa.daysLeft} day{twofa.daysLeft === 1 ? '' : 's'} left). It cannot be disabled once enabled.
+            </p>
+          )}
+          {status?.enabled && (
+            <p className="text-[13px] text-[#5C5C5C] bg-[#F6F6F6] rounded-[10px] px-3 py-2 mt-4">
+              Two-factor authentication is enabled and mandatory — it cannot be disabled.
+            </p>
+          )}
 
           {error && (
             <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mt-4">{error}</p>
@@ -174,29 +178,7 @@ export default function Security() {
             </div>
           )}
 
-          {status?.enabled && (
-            <form onSubmit={handleDisable} className="mt-5 pt-4 border-t border-[#ECECEC]">
-              <p className="text-[13px] font-semibold">Disable two-factor authentication</p>
-              <p className="text-[13px] text-[#8A8A8A] mt-0.5">Enter a current code from your app (or a backup code) to confirm.</p>
-              <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                <input
-                  required
-                  value={disableCode}
-                  onChange={(e) => setDisableCode(e.target.value)}
-                  placeholder="Code or backup code"
-                  autoComplete="one-time-code"
-                  className="sm:max-w-[220px]"
-                />
-                <button
-                  type="submit"
-                  disabled={working}
-                  className="px-4 py-2.5 text-[14px] font-semibold rounded-[10px] border border-[#E5484D] text-[#E5484D] disabled:opacity-50"
-                >
-                  {working ? 'Please wait…' : 'Disable 2FA'}
-                </button>
-              </div>
-            </form>
-          )}
+          {/* Disabling is not offered — 2FA is mandatory. */}
         </div>
       )}
 

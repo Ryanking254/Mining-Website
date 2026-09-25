@@ -31,6 +31,14 @@ api.interceptors.response.use(
       localStorage.removeItem('ledger-user');
       window.location.href = '/login';
     }
+    // Authenticator grace expired — force the user to the Security page.
+    if (
+      err?.response?.status === 403 &&
+      err?.response?.data?.code === 'TWOFA_SETUP_REQUIRED' &&
+      window.location.pathname !== '/security'
+    ) {
+      window.location.href = '/security';
+    }
     return Promise.reject(err);
   }
 );
@@ -43,10 +51,11 @@ export const verify2faLogin = (payload) => api.post('/auth/2fa/verify-login', pa
 export const getMe = () => api.get('/auth/me');
 
 // --- 2FA (Google Authenticator / any TOTP app) ---
+// Note: 2FA is mandatory and cannot be disabled — there is intentionally no
+// disable endpoint on the frontend (the backend also rejects it with 403).
 export const get2faStatus = () => api.get('/auth/2fa/status');
 export const setup2fa = () => api.post('/auth/2fa/setup');
 export const confirm2fa = (code) => api.post('/auth/2fa/confirm', { code });
-export const disable2fa = (payload) => api.post('/auth/2fa/disable', payload);
 
 // --- Batches ---
 export const getBatches = (params) => api.get('/batches', { params });

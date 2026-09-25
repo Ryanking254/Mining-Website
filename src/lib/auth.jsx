@@ -71,6 +71,15 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // Re-fetch /me (e.g. after enabling the authenticator on the Security page
+  // while already signed in) so context + localStorage stay in sync.
+  const refreshUser = useCallback(async () => {
+    const { data } = await getMe();
+    setUser(data);
+    try { localStorage.setItem('ledger-user', JSON.stringify(data)); } catch { /* ignore */ }
+    return data;
+  }, []);
+
   useEffect(() => {
     // Re-validate stored token on boot (backend is source of truth).
     let cancelled = false;
@@ -92,8 +101,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, loginWithGoogle, verify2fa, logout, isAuthed: !!token && !!user }),
-    [user, token, loading, login, register, loginWithGoogle, verify2fa, logout]
+    () => ({ user, token, loading, login, register, loginWithGoogle, verify2fa, refreshUser, logout, isAuthed: !!token && !!user }),
+    [user, token, loading, login, register, loginWithGoogle, verify2fa, refreshUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
