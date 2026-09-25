@@ -178,7 +178,6 @@ export default function Login({ initialMode = 'login' }) {
                 useOneTap={false}
                 text={mode === 'login' ? 'signin_with' : 'signup_with'}
                 shape="rectangular"
-                width="100%"
               />
             </div>
             <div className="flex items-center gap-3 my-4">

@@ -68,6 +68,7 @@ export default function Dashboard() {
   // Sales Overview chart — refetches whenever the calendar window changes.
   useEffect(() => {
     if (!dateWindowValid) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- invalid window clears the chart
       setSalesSummary([]);
       setSummaryError(from && to && from > to ? 'Start date must be on or before end date.' : '');
       return;
@@ -144,20 +145,40 @@ export default function Dashboard() {
       {/* Middle row */}
       <div className="grid lg:grid-cols-3 gap-3 mb-3">
         <div className="card p-4 lg:col-span-2">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h2 className="text-[14px] font-bold">Sales Overview</h2>
-            <div className="flex gap-1 text-[11px]">
-              {ranges.map((r) => (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <input
+                type="date"
+                value={from}
+                max={to}
+                onChange={(e) => setFrom(e.target.value)}
+                className="border border-[#E3DCCB] rounded-[8px] px-1.5 py-1 text-[11px] text-[#5C5C5C] bg-white"
+                aria-label="From date"
+              />
+              <span className="text-[#8A8A8A]">–</span>
+              <input
+                type="date"
+                value={to}
+                min={from}
+                onChange={(e) => setTo(e.target.value)}
+                className="border border-[#E3DCCB] rounded-[8px] px-1.5 py-1 text-[11px] text-[#5C5C5C] bg-white"
+                aria-label="To date"
+              />
+              {['daily', 'weekly', 'monthly'].map((b) => (
                 <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`px-2 py-0.5 rounded ${range === r ? 'bg-black text-white' : 'text-[#8A8A8A] hover:text-black'}`}
+                  key={b}
+                  onClick={() => setBucket(b)}
+                  className={`px-2 py-1 rounded ${bucket === b ? 'bg-black text-white' : 'text-[#8A8A8A] hover:text-black'}`}
                 >
-                  {r === 'daily' ? '1M' : r === 'weekly' ? '3M' : '6M'}
+                  {b === 'daily' ? 'Daily' : b === 'weekly' ? 'Weekly' : 'Monthly'}
                 </button>
               ))}
             </div>
           </div>
+          {summaryError && (
+            <p className="text-[12px] font-medium text-[#E5484D] mb-2">{summaryError}</p>
+          )}
           <div className="h-56">
             {barData.length === 0 ? (
               <p className="text-[13px] text-[#8A8A8A] py-6 text-center">No sales data yet — record a sale to see the chart.</p>
