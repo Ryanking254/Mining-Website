@@ -13,14 +13,11 @@ import { SalesIcon } from '../components/icons.jsx';
 
 const ranges = ['daily', 'weekly', 'monthly'];
 
-function Kpi({ label, value, delta, down }) {
+function Kpi({ label, value }) {
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold tracking-wide text-[#8A8A8A]">{label}</p>
-        {delta && (
-          <span className={`badge ${down ? 'badge-red' : 'badge-green'}`}>{delta}</span>
-        )}
       </div>
       <p className="text-[22px] font-bold tracking-tight tabular">{value}</p>
     </div>
@@ -38,6 +35,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch on range change needs a loading flag
     setLoading(true);
     Promise.all([
       getCapital().catch(() => ({ data: null })),
@@ -74,11 +72,7 @@ export default function Dashboard() {
         profit: Number(s.profit) || 0,
       }));
     }
-    return [
-      { name: 'Jan', revenue: 4200 }, { name: 'Feb', revenue: 5200 },
-      { name: 'Mar', revenue: 7800 }, { name: 'Apr', revenue: 6100 },
-      { name: 'May', revenue: 5400 }, { name: 'Jun', revenue: 6900 },
-    ];
+    return [];
   }, [salesSummary]);
 
   const maxIdx = barData.reduce((mi, d, i) => (d.revenue > (barData[mi]?.revenue || 0) ? i : mi), 0);
@@ -89,10 +83,7 @@ export default function Dashboard() {
       const k = e.category || 'Other';
       map[k] = (map[k] || 0) + (Number(e.amount) || 0);
     });
-    const arr = Object.entries(map).map(([name, value]) => ({ name, value }));
-    return arr.length ? arr.slice(0, 4) : [
-      { name: 'Transport', value: 1082 }, { name: 'Labour', value: 432 }, { name: 'Fuel', value: 126 },
-    ];
+    return Object.entries(map).map(([name, value]) => ({ name, value })).slice(0, 4);
   }, [expenses]);
 
   const expTotal = expByCat.reduce((a, c) => a + c.value, 0);
@@ -114,10 +105,10 @@ export default function Dashboard() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
-        <Kpi label="TOTAL CAPITAL" value={formatKES(total)} delta="▲ +12.4%" />
-        <Kpi label="SALES REVENUE" value={formatKES(salesRevenue)} delta="▲ +8.3%" />
-        <Kpi label="EXPENDITURES" value={formatKES(expenditures)} delta="▼ -3.1%" down />
-        <Kpi label="LOANS OUT" value={formatKES(outstandingLoans)} delta={`${loans.length} open`} />
+        <Kpi label="TOTAL CAPITAL" value={formatKES(total)} />
+        <Kpi label="SALES REVENUE" value={formatKES(salesRevenue)} />
+        <Kpi label="EXPENDITURES" value={formatKES(expenditures)} />
+        <Kpi label="LOANS OUT" value={formatKES(outstandingLoans)} />
       </div>
 
       {/* Middle row */}
@@ -138,6 +129,9 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="h-56">
+            {barData.length === 0 ? (
+              <p className="text-[13px] text-[#8A8A8A] py-6 text-center">No sales data yet — record a sale to see the chart.</p>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData} barCategoryGap="28%">
                 <CartesianGrid stroke="#F1EDE2" vertical={false} />
@@ -154,6 +148,7 @@ export default function Dashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
           {loading && <p className="text-xs text-[#8A8A8A] mt-2">Loading…</p>}
         </div>
@@ -161,8 +156,11 @@ export default function Dashboard() {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-[14px] font-bold">Top Categories</h2>
-            <span className="text-[11px] text-[#8A8A8A]">6M</span>
           </div>
+          {expByCat.length === 0 ? (
+            <p className="text-[13px] text-[#8A8A8A] py-6 text-center">No expenses yet.</p>
+          ) : (
+          <>
           <div className="h-44 relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -190,6 +188,8 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+          </>
+          )}
         </div>
       </div>
 
