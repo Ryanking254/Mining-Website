@@ -84,3 +84,5 @@ export const createWithdrawal = (payload) => api.post('/withdrawals', payload);
 // --- Capital ---
 export const getCapital = () => api.get('/capital');
 export const setStartingCapital = (payload) => api.put('/capital/starting', payload);
+export const addCapital = (payload) => api.post('/capital/add', payload);
+export const getCapitalAdditions = () => api.get('/capital/additions');

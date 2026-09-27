@@ -10,7 +10,7 @@ export default function Login({ initialMode = 'login' }) {
   const { login, register, loginWithGoogle, verify2fa } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', startingCapital: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -52,11 +52,16 @@ export default function Login({ initialMode = 'login' }) {
         }
         if (maybeOfferSetup(data)) return;
       } else {
-        const data = await register({
+        const payload = {
           name: form.name.trim(),
           email: form.email.trim(),
           password: form.password,
-        });
+        };
+        // Optional opening balance — seeds this account's starting capital.
+        if (form.startingCapital !== '' && form.startingCapital != null) {
+          payload.startingCapital = Number(form.startingCapital);
+        }
+        const data = await register(payload);
         if (data?.requires2fa) {
           setPendingToken(data.pendingToken);
           return;
@@ -275,6 +280,19 @@ export default function Login({ initialMode = 'login' }) {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
           </label>
+          {mode === 'register' && (
+            <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">Starting capital (KES, optional)
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.startingCapital}
+                onChange={(e) => setForm({ ...form, startingCapital: e.target.value })}
+                placeholder="e.g. 50000"
+                autoComplete="off"
+              />
+            </label>
+          )}
 
           {error && (
             <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2">{error}</p>

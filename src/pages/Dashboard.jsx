@@ -5,7 +5,8 @@ import {
   PieChart, Pie,
 } from 'recharts';
 import {
-  getCapital, getSalesSummary, getSales,
+  getCapital, getCapitalAdditions, setStartingCapital, addCapital,
+  getSalesSummary, getSales,
   getBatches, getLoans, getExpenditures, asArray,
 } from '../lib/api';
 import { formatKES, formatGrams, formatDate } from '../lib/format';
@@ -42,6 +43,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [summaryError, setSummaryError] = useState('');
 
+  // Capital manager — starting capital + manual top-ups for this account.
+  const [additions, setAdditions] = useState([]);
+  const [capFormOpen, setCapFormOpen] = useState(false);
+  const [capMode, setCapMode] = useState('add'); // 'add' | 'starting'
+  const [capAmount, setCapAmount] = useState('');
+  const [capNote, setCapNote] = useState('');
+  const [capBusy, setCapBusy] = useState(false);
+  const [capError, setCapError] = useState('');
+
+  const refreshCapital = async () => {
+    try {
+      const [capRes, addRes] = await Promise.all([
+        getCapital(),
+        getCapitalAdditions().catch(() => ({ data: [] })),
+      ]);
+      setCapital(capRes.data);
+      setAdditions(asArray(addRes.data));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const dateWindowValid = from && to && from <= to;
 
   // Static ledger data — loaded once.
@@ -50,13 +73,15 @@ export default function Dashboard() {
     setLoading(true);
     Promise.all([
       getCapital().catch(() => ({ data: null })),
+      getCapitalAdditions().catch(() => ({ data: [] })),
       getSales().catch(() => ({ data: [] })),
       getBatches().catch(() => ({ data: [] })),
       getLoans().catch(() => ({ data: [] })),
       getExpenditures().catch(() => ({ data: [] })),
     ])
-      .then(([cap, sales, bat, loan, exp]) => {
+      .then(([cap, addRes, sales, bat, loan, exp]) => {
         setCapital(cap.data);
+        setAdditions(asArray(addRes.data));
         setRecentSales(asArray(sales.data).slice(0, 5));
         setBatches(asArray(bat.data).slice(0, 3));
         setLoans(asArray(loan.data).filter((l) => l.status !== 'REPAID').slice(0, 3));
@@ -120,6 +145,35 @@ export default function Dashboard() {
   const expTotal = expByCat.reduce((a, c) => a + c.value, 0);
   const donutColors = ['#E8620C', '#1A1A1A', '#C9A227', '#D8D2C2'];
 
+  const startingCapital = capital?.startingCapital ?? breakdown.starting ?? 0;
+  const manualAdded = capital?.manualAdditions ?? capital?.addedCapital ?? breakdown.added ?? 0;
+
+  const handleCapitalSubmit = async (e) => {
+    e.preventDefault();
+    setCapError('');
+    const amount = Number(capAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCapError('Enter a positive amount.');
+      return;
+    }
+    setCapBusy(true);
+    try {
+      if (capMode === 'starting') {
+        await setStartingCapital({ amount });
+      } else {
+        await addCapital({ amount, note: capNote.trim() || undefined });
+      }
+      setCapAmount('');
+      setCapNote('');
+      setCapFormOpen(false);
+      await refreshCapital();
+    } catch (err) {
+      setCapError(err?.response?.data?.error || 'Could not update capital. Try again.');
+    } finally {
+      setCapBusy(false);
+    }
+  };
+
   return (
     <div>
       {/* Header like screenshot */}
@@ -140,6 +194,78 @@ export default function Dashboard() {
         <Kpi label="SALES REVENUE" value={formatKES(salesRevenue)} />
         <Kpi label="EXPENDITURES" value={formatKES(expenditures)} />
         <Kpi label="LOANS OUT" value={formatKES(outstandingLoans)} />
+      </div>
+
+      {/* Capital manager — starting capital + manual top-ups (per account) */}
+      <div className="card p-4 mb-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 className="text-[14px] font-bold">Capital</h2>
+            <p className="text-[12px] text-[#8A8A8A] tabular">
+              Started {formatKES(startingCapital)}
+              {manualAdded > 0 && <> · topped up {formatKES(manualAdded)}</>} · now {formatKES(total)}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setCapMode('add'); setCapFormOpen((v) => !(v && capMode === 'add')); setCapError(''); }}
+              className="text-[13px] font-semibold px-4 py-2 rounded-full bg-black text-white hover:bg-[#333]"
+            >
+              + Add funds
+            </button>
+            <button
+              onClick={() => { setCapMode('starting'); setCapFormOpen((v) => !(v && capMode === 'starting')); setCapError(''); setCapAmount(String(startingCapital || '')); }}
+              className="text-[13px] font-semibold px-4 py-2 rounded-full border border-[#E3DCCB] bg-white hover:border-black"
+            >
+              Set starting
+            </button>
+          </div>
+        </div>
+        {capFormOpen && (
+          <form onSubmit={handleCapitalSubmit} className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
+            <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C] flex-1">
+              {capMode === 'starting' ? 'Starting capital (KES)' : 'Amount to add (KES)'}
+              <input
+                required
+                type="number" min="0" step="0.01"
+                value={capAmount}
+                onChange={(e) => setCapAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </label>
+            {capMode === 'add' && (
+              <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C] flex-1">
+                Note (optional)
+                <input
+                  value={capNote}
+                  onChange={(e) => setCapNote(e.target.value)}
+                  placeholder="e.g. Extra cash injected"
+                  maxLength={255}
+                />
+              </label>
+            )}
+            <button
+              type="submit" disabled={capBusy}
+              className="bg-black text-white px-4 py-2.5 text-[13px] font-semibold rounded-[10px] disabled:opacity-50 h-[42px] whitespace-nowrap"
+            >
+              {capBusy ? 'Saving…' : capMode === 'starting' ? 'Save starting' : '+ Add to capital'}
+            </button>
+          </form>
+        )}
+        {capError && (
+          <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mt-3">{capError}</p>
+        )}
+        {additions.length > 0 && (
+          <div className="mt-3 border-t border-[#F1EDE2] pt-2">
+            <p className="text-[11px] font-semibold tracking-wide text-[#8A8A8A] mb-1">TOP-UPS</p>
+            {additions.slice(0, 3).map((a) => (
+              <div key={a.id} className="flex items-center justify-between text-[13px] py-1">
+                <span className="text-[#5C5C5C] truncate">{a.note || 'Manual top-up'} · {formatDate(a.createdAt)}</span>
+                <span className="font-semibold tabular text-[#1F9D55]">+{formatKES(a.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Middle row */}
