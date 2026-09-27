@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOutletContext } from 'react-router-dom';
 import { getSales, createSale, getBatches, exportSales, asArray } from '../lib/api';
@@ -16,6 +16,17 @@ export default function Sales() {
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [dropOpen, setDropOpen] = useState(false);
+  const dropRef = useRef(null);
+
+  useEffect(() => {
+    if (!dropOpen) return;
+    const onDown = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target)) setDropOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dropOpen]);
 
   const load = () => {
     getSales().then((res) => setSales(asArray(res.data))).catch(() => {});
@@ -43,6 +54,12 @@ export default function Sales() {
     (a, b) => a + (Number(b.gramsRemaining) || 0) * (Number(b.pricePerGram) || 0),
     0
   );
+
+  const dropLabel = selectedBatches.length === 0
+    ? 'Select a batch'
+    : selectedBatches.length === 1
+      ? `${selectedBatches[0].batchNumber} — ${selectedBatches[0].itemName} (${formatGrams(selectedBatches[0].gramsRemaining)} left)`
+      : `${selectedBatches.map((b) => b.batchNumber).join(', ')} (${selectedBatches.length} batches)`;
 
   const toggleBatch = (id) => {
     const key = String(id);
@@ -161,44 +178,38 @@ export default function Sales() {
 
       <form onSubmit={handleSubmit} className="card p-4 mb-3">
         <p className="text-[13px] font-bold mb-3">Record sale</p>
-        <div className="mb-3">
-          <p className="text-xs font-medium text-[#5C5C5C] mb-1.5">
-            Batches {selectedIds.length > 0 && <span className="text-[#8A8A8A]">· {selectedIds.length} selected</span>}
-          </p>
-          {openBatches.length === 0 ? (
-            <p className="text-[13px] text-[#8A8A8A]">No open batches — add a batch first.</p>
-          ) : (
-            <div className="border border-[#E3DCCB] rounded-[10px] divide-y divide-[#F1EDE2] max-h-44 overflow-y-auto">
-              {openBatches.map((b) => {
-                const checked = selectedIds.includes(String(b.id));
-                return (
-                  <label key={b.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[#FAF7F0] text-[13px]">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleBatch(b.id)}
-                      className="w-4 h-4 accent-black shrink-0"
-                    />
-                    <span className="flex-1 min-w-0">
-                      <span className="block font-semibold truncate">{b.batchNumber} — {b.itemName}</span>
-                      <span className="block text-[12px] text-[#8A8A8A] tabular">
-                        {formatGrams(b.gramsRemaining)} left · {formatKES(b.pricePerGram)}/g
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-          {isMulti && (
-            <p className="text-[12px] text-[#5C5C5C] mt-2 tabular">
-              Combined: <span className="font-bold text-black">{formatGrams(totalWeight)}</span>
-              {' · '}buying price <span className="font-bold text-black">{formatKES(totalCost)}</span>
-              <span className="text-[#8A8A8A]"> — full remaining weight of each batch is sold</span>
-            </p>
-          )}
-        </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
+          <div className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C] lg:col-span-1">Batch
+            <span ref={dropRef} className="relative block">
+              <button
+                type="button"
+                onClick={() => setDropOpen((v) => !v)}
+                className="flex items-center justify-between gap-2 text-left font-normal"
+                style={{ background: '#fff', border: '1px solid #E3DCCB', color: '#1A1A1A', padding: '0.55rem 0.75rem', fontSize: '0.875rem', borderRadius: '10px', width: '100%' }}
+              >
+                <span className={`truncate ${selectedIds.length === 0 ? 'text-[#B0A893]' : ''}`}>{dropLabel}</span>
+                <span className="text-[#8A8A8A] text-xs shrink-0">▾</span>
+              </button>
+              {dropOpen && (
+                <span className="absolute z-20 left-0 right-0 mt-1 block bg-white border border-[#E3DCCB] rounded-[10px] shadow-lg max-h-52 overflow-y-auto">
+                  {openBatches.length === 0 && (
+                    <span className="block px-3 py-2 text-[13px] font-normal text-[#8A8A8A]">No open batches</span>
+                  )}
+                  {openBatches.map((b) => (
+                    <label key={b.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#FAF7F0] text-[13px] font-normal text-[#1A1A1A]">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(String(b.id))}
+                        onChange={() => toggleBatch(b.id)}
+                        className="w-4 h-4 accent-black shrink-0"
+                      />
+                      <span className="truncate">{b.batchNumber} — {b.itemName} ({formatGrams(b.gramsRemaining)} left)</span>
+                    </label>
+                  ))}
+                </span>
+              )}
+            </span>
+          </div>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">New weight (g)
             <input
               required={!isMulti}
@@ -235,6 +246,9 @@ export default function Sales() {
             <span> — {formatGrams(soldNum)} × {pctNum}% × {formatKES(priceNum)}/g</span>
             {previewPayable != null && pctNum !== 100 && (
               <span> · payable {formatGrams(previewPayable)}</span>
+            )}
+            {isMulti && (
+              <span> · buying {formatKES(totalCost)}</span>
             )}
             {previewProfit != null && (
               <span className={previewProfit >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}>
