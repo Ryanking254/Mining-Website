@@ -264,8 +264,8 @@ body {
   box-shadow: 0 1px 2px rgba(26,26,26,.04);
 }
 
-/* Inputs */
-input, select, textarea {
+/* Inputs (text-like only — checkboxes/radios keep their native size) */
+input:not([type='checkbox']):not([type='radio']), select, textarea {
   background: #fff;
   border: 1px solid #E3DCCB;
   color: #1A1A1A;
@@ -274,11 +274,18 @@ input, select, textarea {
   border-radius: 10px;
   width: 100%;
 }
-input::placeholder, textarea::placeholder { color: #B0A893; }
-input:focus, select:focus, textarea:focus {
+input:not([type='checkbox']):not([type='radio'])::placeholder, textarea::placeholder { color: #B0A893; }
+input:not([type='checkbox']):not([type='radio']):focus, select:focus, textarea:focus {
   outline: 2px solid #E8620C;
   outline-offset: 0;
   border-color: #E8620C;
+}
+input[type='checkbox'], input[type='radio'] {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  accent-color: #1A1A1A;
+  flex-shrink: 0;
 }
 button { font-family: inherit; cursor: pointer; }
 ::selection { background: #E8620C; color: #fff; }
@@ -391,8 +398,8 @@ html.dark .notif-pop { background: #242422; border-color: #35352F; }
 html.dark .notif-item { border-bottom-color: #2E2E2A; }
 html.dark .notif-item:hover { background: #2A2A27; }
 html.dark .card { background: #242422; border-color: #34342F; box-shadow: none; }
-html.dark input, html.dark select, html.dark textarea { background: #2A2A27; border-color: #3A3A35; color: #EDEDE8; }
-html.dark input::placeholder, html.dark textarea::placeholder { color: #7A7A70; }
+html.dark input:not([type='checkbox']):not([type='radio']), html.dark select, html.dark textarea { background: #2A2A27; border-color: #3A3A35; color: #EDEDE8; }
+html.dark input:not([type='checkbox']):not([type='radio'])::placeholder, html.dark textarea::placeholder { color: #7A7A70; }
 html.dark .side-label { color: #7A7A70; }
 html.dark .side-link { color: #A9A9A0; }
 html.dark .side-link:hover { background: rgba(255,255,255,0.06); color: #fff; }

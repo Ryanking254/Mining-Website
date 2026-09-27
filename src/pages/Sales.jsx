@@ -201,9 +201,10 @@ export default function Sales() {
                         type="checkbox"
                         checked={selectedIds.includes(String(b.id))}
                         onChange={() => toggleBatch(b.id)}
-                        className="w-4 h-4 accent-black shrink-0"
+                        className="accent-black shrink-0 grow-0"
+                        style={{ width: '1rem', height: '1rem' }}
                       />
-                      <span className="truncate">{b.batchNumber} — {b.itemName} ({formatGrams(b.gramsRemaining)} left)</span>
+                      <span className="min-w-0 flex-1 text-left truncate">{b.batchNumber} — {b.itemName} ({formatGrams(b.gramsRemaining)} left)</span>
                     </label>
                   ))}
                 </span>
