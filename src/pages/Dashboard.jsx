@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -19,6 +19,62 @@ const monthsAgoISO = (n) => {
   return toISO(d);
 };
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function parseISODate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').slice(0, 10));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ISO-8601 week number (Monday-first) for the weekly chart bucket.
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (t.getUTCDay() + 6) % 7;
+  t.setUTCDate(t.getUTCDate() - day + 3);
+  const firstThursday = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const fday = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - fday + 3);
+  return 1 + Math.round((t.getTime() - firstThursday.getTime()) / (7 * 86400000));
+}
+
+function mondayKey(d) {
+  const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = (t.getDay() + 6) % 7;
+  t.setDate(t.getDate() - day);
+  return toISO(t);
+}
+
+// Local fallback grouping for the Sales Overview chart — same buckets as the
+// backend summary, so bars render even when /sales/summary returns nothing.
+function groupSalesLocally(salesList, bucket, from, to) {
+  const groups = new Map();
+  for (const s of salesList) {
+    const iso = String(s.saleDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso < from || iso > to) continue;
+    const d = parseISODate(iso);
+    if (!d) continue;
+    let key;
+    let label;
+    if (bucket === 'daily') {
+      key = iso;
+      label = `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]}`;
+    } else if (bucket === 'weekly') {
+      key = mondayKey(d);
+      label = `W${isoWeek(d)}`;
+    } else {
+      key = iso.slice(0, 7);
+      label = MONTHS[d.getMonth()];
+    }
+    const g = groups.get(key) ?? { name: label, revenue: 0, profit: 0 };
+    g.revenue += Number(s.totalSellingPrice) || 0;
+    g.profit += Number(s.profitLoss) || 0;
+    groups.set(key, g);
+  }
+  return [...groups.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, g]) => g);
+}
+
 function Kpi({ label, value }) {
   return (
     <div className="card p-4">
@@ -36,6 +92,7 @@ export default function Dashboard() {
   const [from, setFrom] = useState(() => monthsAgoISO(6));
   const [to, setTo] = useState(() => toISO(new Date()));
   const [salesSummary, setSalesSummary] = useState([]);
+  const [allSales, setAllSales] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [batches, setBatches] = useState([]);
   const [loans, setLoans] = useState([]);
@@ -67,6 +124,10 @@ export default function Dashboard() {
 
   const dateWindowValid = from && to && from <= to;
 
+  // One-time fit: if the earliest sale predates the default 6-month window,
+  // widen the start date so the chart includes it on first load.
+  const fittedWindow = useRef(false);
+
   // Static ledger data — loaded once.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load needs a loading flag
@@ -82,7 +143,19 @@ export default function Dashboard() {
       .then(([cap, addRes, sales, bat, loan, exp]) => {
         setCapital(cap.data);
         setAdditions(asArray(addRes.data));
-        setRecentSales(asArray(sales.data).slice(0, 5));
+        const all = asArray(sales.data);
+        setAllSales(all);
+        setRecentSales(all.slice(0, 5));
+        if (!fittedWindow.current && all.length > 0) {
+          fittedWindow.current = true;
+          const earliest = all
+            .map((s) => String(s.saleDate || '').slice(0, 10))
+            .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+            .sort()[0];
+          if (earliest && earliest < monthsAgoISO(6)) {
+            setFrom(earliest);
+          }
+        }
         setBatches(asArray(bat.data).slice(0, 3));
         setLoans(asArray(loan.data).filter((l) => l.status !== 'REPAID').slice(0, 3));
         setExpenses(asArray(exp.data));
@@ -128,8 +201,14 @@ export default function Dashboard() {
         profit: Number(s.profit) || 0,
       }));
     }
+    // Fallback: the summary endpoint came back empty (out-of-window dates,
+    // a failed request, …) but sales exist — group them locally so the
+    // chart still reflects the selected window instead of showing nothing.
+    if (dateWindowValid && allSales.length > 0) {
+      return groupSalesLocally(allSales, bucket, from, to);
+    }
     return [];
-  }, [salesSummary]);
+  }, [salesSummary, allSales, bucket, from, to, dateWindowValid]);
 
   const maxIdx = barData.reduce((mi, d, i) => (d.revenue > (barData[mi]?.revenue || 0) ? i : mi), 0);
 
@@ -307,7 +386,11 @@ export default function Dashboard() {
           )}
           <div className="h-56">
             {barData.length === 0 ? (
-              <p className="text-[13px] text-[#8A8A8A] py-6 text-center">No sales data yet — record a sale to see the chart.</p>
+              <p className="text-[13px] text-[#8A8A8A] py-6 text-center">
+                {allSales.length > 0
+                  ? 'No sales in this date range — widen the dates above to see them.'
+                  : 'No sales data yet — record a sale to see the chart.'}
+              </p>
             ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData} barCategoryGap="28%">
@@ -381,11 +464,14 @@ export default function Dashboard() {
             {recentSales.length === 0 && (
               <p className="text-[13px] text-[#8A8A8A] py-6 text-center">No sales yet — <Link to="/sales" className="text-[#E8620C] font-semibold">record the first sale</Link>.</p>
             )}
-            {recentSales.map((s) => (
+            {recentSales.map((s) => {
+              const pct = Number(s.purityPercentage ?? s.percentage ?? 100) || 100;
+              const showPct = Math.abs(pct - 100) > 0.005;
+              return (
               <div key={s.id} className="flex items-center gap-3 py-2.5 border-b border-[#F1EDE2] last:border-0">
                 <span className="w-9 h-9 rounded-xl bg-[#F6F1E8] flex items-center justify-center text-[#E8620C] shrink-0"><SalesIcon className="w-[18px] h-[18px]" /></span>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-semibold truncate">{s.batchNumber ?? 'Sale'} · {formatGrams(s.gramsSold)}</span>
+                  <span className="block text-[13px] font-semibold truncate">{s.batchNumber ?? 'Sale'} · {formatGrams(s.gramsSold)}{showPct && ` · ${pct}%`}</span>
                   <span className="block text-[12px] text-[#8A8A8A]">{formatDate(s.saleDate)}</span>
                 </span>
                 <span className="text-right">
@@ -395,7 +481,8 @@ export default function Dashboard() {
                   </span>
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
