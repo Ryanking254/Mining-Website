@@ -471,7 +471,7 @@ export default function Dashboard() {
               <div key={s.id} className="flex items-center gap-3 py-2.5 border-b border-[#F1EDE2] last:border-0">
                 <span className="w-9 h-9 rounded-xl bg-[#F6F1E8] flex items-center justify-center text-[#E8620C] shrink-0"><SalesIcon className="w-[18px] h-[18px]" /></span>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-semibold truncate">{s.batchNumber ?? 'Sale'} · {formatGrams(s.gramsSold)}{showPct && ` · ${pct}%`}</span>
+                  <span className="block text-[13px] font-semibold truncate">{(Array.isArray(s.batchNumbers) && s.batchNumbers.length > 1 ? s.batchNumbers.join(', ') : (s.batchNumber ?? 'Sale'))} · {formatGrams(s.gramsSold)}{showPct && ` · ${pct}%`}</span>
                   <span className="block text-[12px] text-[#8A8A8A]">{formatDate(s.saleDate)}</span>
                 </span>
                 <span className="text-right">
