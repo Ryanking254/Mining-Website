@@ -78,8 +78,9 @@ export default function Sales() {
     }
   };
 
-  // Effective sale weight: summed remainder for multi, typed weight for single.
-  const soldNum = isMulti ? totalWeight : Number(form.gramsSold);
+  // Effective sale weight: always the manually entered "New weight"
+  // (weighed after removing impurities). totalWeight below is display-only.
+  const soldNum = Number(form.gramsSold);
   const pctNum = form.percentage === '' || form.percentage == null ? 100 : Number(form.percentage);
   const priceNum = Number(form.sellingPricePerGram);
   const pctValid = Number.isFinite(pctNum) && pctNum > 0 && pctNum <= 100;
@@ -103,12 +104,20 @@ export default function Sales() {
     singleBatch && !isMulti && Number.isFinite(Number(form.gramsSold)) && Number(form.gramsSold) > 0
       ? Number(form.gramsSold) > Number(singleBatch.gramsRemaining) + 1e-9
       : false;
+  const multiOverStock =
+    isMulti && Number.isFinite(soldNum) && soldNum > 0
+      ? soldNum > totalWeight + 1e-9
+      : false;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
     if (selectedIds.length === 0) {
       setFormError('Select at least one batch.');
+      return;
+    }
+    if (!Number.isFinite(soldNum) || soldNum <= 0) {
+      setFormError('Enter the new weight after removing impurities.');
       return;
     }
     if (!pctValid) {
@@ -121,11 +130,18 @@ export default function Sales() {
       );
       return;
     }
+    if (multiOverStock) {
+      setFormError(
+        `New weight exceeds combined stock (${formatGrams(totalWeight)} total).`
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       if (isMulti) {
         await createSale({
           batchIds: selectedIds.map(Number),
+          gramsSold: soldNum,
           purityPercentage: pctNum,
           sellingPricePerGram: Number(form.sellingPricePerGram),
           saleDate: form.saleDate || new Date().toISOString().slice(0, 10),
@@ -213,12 +229,11 @@ export default function Sales() {
           </div>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">New weight (g)
             <input
-              required={!isMulti}
-              disabled={isMulti}
+              required
               type="number" step="0.01" min="0"
-              value={isMulti ? totalWeight || '' : form.gramsSold}
+              value={form.gramsSold}
               onChange={(e) => setForm({ ...form, gramsSold: e.target.value })}
-              placeholder={isMulti ? 'Auto from batches' : 'Weight after burn'}
+              placeholder="Weight after removing impurities"
             />
           </label>
           <label className="flex flex-col gap-1.5 text-xs font-medium text-[#5C5C5C]">Percentage (%)
@@ -241,6 +256,19 @@ export default function Sales() {
             </button>
           </div>
         </div>
+        {isMulti && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[10px] bg-[#FAF7F0] border border-[#E3DCCB] px-3 py-2.5 text-[12px] tabular">
+            <span className="font-bold text-black">
+              {selectedBatches.length} batches combined
+            </span>
+            <span className="text-[#5C5C5C]">
+              Total weight: <span className="font-bold text-black">{formatGrams(totalWeight)}</span>
+            </span>
+            <span className="text-[#5C5C5C]">
+              Total buying: <span className="font-bold text-black">{formatKES(totalCost)}</span>
+            </span>
+          </div>
+        )}
         {previewTotal != null && (
           <p className="text-[12px] text-[#8A8A8A] mt-2 tabular">
             Total: <span className="font-bold text-black">{formatKES(previewTotal)}</span>
@@ -261,6 +289,11 @@ export default function Sales() {
         {overStock && (
           <p className="text-[12px] font-medium text-[#E5484D] mt-2">
             Exceeds remaining stock ({formatGrams(singleBatch?.gramsRemaining)} left).
+          </p>
+        )}
+        {multiOverStock && (
+          <p className="text-[12px] font-medium text-[#E5484D] mt-2">
+            New weight exceeds combined stock ({formatGrams(totalWeight)} total).
           </p>
         )}
         {formError && (
