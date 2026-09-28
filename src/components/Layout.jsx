@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import {
   OverviewIcon, BatchesIcon, SalesIcon, LoansIcon,
-  ExpendituresIcon, WithdrawalsIcon, SecurityIcon, SunIcon,
+  ExpendituresIcon, WithdrawalsIcon, SecurityIcon, AdminIcon, SunIcon,
   MoonIcon, SearchIcon, LogoutIcon, MenuIcon, DownloadIcon,
 } from './icons.jsx';
 import { exportSales } from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
 import { getTwofaState } from '../lib/twofa';
 
-const links = [
+const baseLinks = [
   { to: '/', label: 'Overview', end: true, Icon: OverviewIcon },
   { to: '/batches', label: 'Batches', Icon: BatchesIcon },
   { to: '/sales', label: 'Sales', Icon: SalesIcon },
@@ -32,13 +32,17 @@ export default function Layout() {
   const [query, setQuery] = useState('');
   const [theme, setTheme] = useState(getInitialTheme);
   const [downloading, setDownloading] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   // Authenticator reminder — shown until 2FA is enabled. Dismissal lasts
   // until the next reload; overdue accounts cannot dismiss it.
   const [twofaDismissed, setTwofaDismissed] = useState(false);
   const twofaReminder = user && !user.twofaEnabled ? getTwofaState(user) : null;
-  const showTwofaBanner = twofaReminder && (twofaReminder.overdue || !twofaDismissed);
+  const showTwofaBanner = !user?.isSuspended && twofaReminder && (twofaReminder.overdue || !twofaDismissed);
+
+  const links = user?.isAdmin
+    ? [...baseLinks, { to: '/admin', label: 'Admin', Icon: AdminIcon }]
+    : baseLinks;
 
   const displayName = user?.name || user?.email || 'User';
   const initial = (displayName || 'U').slice(0, 1).toUpperCase();
@@ -81,6 +85,16 @@ export default function Layout() {
       document.removeEventListener('keydown', onKey);
     };
   }, []);
+
+  // Killswitch: when any API returns 403 ACCOUNT_SUSPENDED, refresh /me so
+  // the paused screen appears immediately with the admin's reason.
+  useEffect(() => {
+    function onSuspended() {
+      refreshUser().catch(() => {});
+    }
+    window.addEventListener('account-suspended', onSuspended);
+    return () => window.removeEventListener('account-suspended', onSuspended);
+  }, [refreshUser]);
 
   const sidebar = (
     <div className="sidebar-inner">
@@ -182,41 +196,69 @@ export default function Layout() {
           </header>
 
           <main className="main-body">
-            {showTwofaBanner && (
-              <div
-                className={`mb-3 flex items-center gap-3 rounded-[12px] px-4 py-3 text-[13px] ${
-                  twofaReminder.overdue
-                    ? 'bg-[#FDECEC] text-[#B42318]'
-                    : 'bg-[#FFFAEB] text-[#5C4B00] border border-[#FEDF89]'
-                }`}
-              >
-                <p className="flex-1 leading-snug">
-                  {twofaReminder.overdue ? (
-                    <><span className="font-bold">Authenticator setup is required.</span> Enable it now to keep using the ledger.</>
-                  ) : (
-                    <><span className="font-bold">Protect your account.</span> Add an authenticator app — compulsory in {twofaReminder.daysLeft} day{twofaReminder.daysLeft === 1 ? '' : 's'}.</>
-                  )}
-                </p>
-                <Link
-                  to="/security"
-                  className={`shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-[10px] ${
-                    twofaReminder.overdue ? 'bg-[#B42318] text-white' : 'bg-black text-white'
-                  }`}
-                >
-                  Set up now
-                </Link>
-                {!twofaReminder.overdue && (
+            {user?.isSuspended ? (
+              <div className="min-h-[60vh] flex items-center justify-center p-4">
+                <div className="card p-6 w-full max-w-[480px] text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-[#FDECEC] text-[#B42318] flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+                    !
+                  </div>
+                  <h1 className="text-xl font-bold tracking-tight">Your services have been paused</h1>
+                  <p className="text-[13px] text-[#8A8A8A] mt-2 leading-snug">
+                    {user?.suspensionReason
+                      ? <>Due to: <span className="font-semibold text-black">{user.suspensionReason}</span></>
+                      : 'Due to reasons from the administrator.'}
+                  </p>
+                  <p className="text-[13px] text-[#8A8A8A] mt-2 leading-snug">
+                    Please contact support to resolve this. Your data is safe and will be
+                    available once your account is resumed.
+                  </p>
                   <button
-                    onClick={() => setTwofaDismissed(true)}
-                    aria-label="Dismiss reminder"
-                    className="shrink-0 text-[13px] font-medium opacity-70 hover:opacity-100"
+                    onClick={handleLogout}
+                    className="mt-4 px-4 py-2.5 text-[14px] font-semibold rounded-[10px] border border-[#E3DCCB] hover:border-black w-full"
                   >
-                    Later
+                    Log out
                   </button>
-                )}
+                </div>
               </div>
+            ) : (
+              <>
+                {showTwofaBanner && (
+                  <div
+                    className={`mb-3 flex items-center gap-3 rounded-[12px] px-4 py-3 text-[13px] ${
+                      twofaReminder.overdue
+                        ? 'bg-[#FDECEC] text-[#B42318]'
+                        : 'bg-[#FFFAEB] text-[#5C4B00] border border-[#FEDF89]'
+                    }`}
+                  >
+                    <p className="flex-1 leading-snug">
+                      {twofaReminder.overdue ? (
+                        <><span className="font-bold">Authenticator setup is required.</span> Enable it now to keep using the ledger.</>
+                      ) : (
+                        <><span className="font-bold">Protect your account.</span> Add an authenticator app — compulsory in {twofaReminder.daysLeft} day{twofaReminder.daysLeft === 1 ? '' : 's'}.</>
+                      )}
+                    </p>
+                    <Link
+                      to="/security"
+                      className={`shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-[10px] ${
+                        twofaReminder.overdue ? 'bg-[#B42318] text-white' : 'bg-black text-white'
+                      }`}
+                    >
+                      Set up now
+                    </Link>
+                    {!twofaReminder.overdue && (
+                      <button
+                        onClick={() => setTwofaDismissed(true)}
+                        aria-label="Dismiss reminder"
+                        className="shrink-0 text-[13px] font-medium opacity-70 hover:opacity-100"
+                      >
+                        Later
+                      </button>
+                    )}
+                  </div>
+                )}
+                <Outlet context={{ query }} />
+              </>
             )}
-            <Outlet context={{ query }} />
           </main>
         </div>
       </div>

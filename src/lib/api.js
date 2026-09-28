@@ -26,6 +26,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    const code = err?.response?.data?.code;
+    // Suspended accounts (killswitch) must NOT be logged out or sent to
+    // /security — they stay signed in and see the paused screen instead.
+    if (err?.response?.status === 403 && code === 'ACCOUNT_SUSPENDED') {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('account-suspended', { detail: err.response.data?.reason || null })
+        );
+      } catch { /* ignore */ }
+      return Promise.reject(err);
+    }
     if (err?.response?.status === 401 && !window.location.pathname.startsWith('/login')) {
       localStorage.removeItem('token');
       localStorage.removeItem('ledger-user');
@@ -86,3 +97,8 @@ export const getCapital = () => api.get('/capital');
 export const setStartingCapital = (payload) => api.put('/capital/starting', payload);
 export const addCapital = (payload) => api.post('/capital/add', payload);
 export const getCapitalAdditions = () => api.get('/capital/additions');
+
+// --- Admin (owner only) ---
+export const getAdminUsers = () => api.get('/admin/users');
+export const setUserSuspension = (id, { suspended, reason }) =>
+  api.patch(`/admin/users/${id}/suspend`, { suspended, reason });

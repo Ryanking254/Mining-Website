@@ -18,11 +18,11 @@ export default function RequireAuth({ children }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  // Authenticator grace expired and still not enabled → force setup.
-  // The Security page itself must stay reachable to complete it.
+  // Suspended accounts skip the 2FA force-redirect — they see the paused
+  // screen (Layout) instead, with the admin's reason.
   if (
     location.pathname !== '/security' &&
-    user && !user.twofaEnabled && getTwofaState(user).overdue
+    user && !user.twofaEnabled && !user.isSuspended && getTwofaState(user).overdue
   ) {
     return <Navigate to="/security" replace />;
   }

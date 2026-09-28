@@ -75,13 +75,13 @@ function groupSalesLocally(salesList, bucket, from, to) {
   return [...groups.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, g]) => g);
 }
 
-function Kpi({ label, value }) {
+function Kpi({ label, value, accent }) {
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold tracking-wide text-[#8A8A8A]">{label}</p>
       </div>
-      <p className="text-[22px] font-bold tracking-tight tabular">{value}</p>
+      <p className={`text-[22px] font-bold tracking-tight tabular ${accent || ''}`}>{value}</p>
     </div>
   );
 }
@@ -190,6 +190,10 @@ export default function Dashboard() {
   const salesRevenue = breakdown.sales ?? salesSummary.reduce((a, s) => a + (Number(s.revenue) || 0), 0);
   const expenditures = breakdown.expenditures ?? expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
   const outstandingLoans = loans.reduce((a, l) => a + ((Number(l.amountGiven) || 0) - (Number(l.amountRepaid) || 0)), 0);
+  // Lifetime profit from sales (sum of profit_loss). Capital snapshot carries
+  // it as breakdown.profit / salesProfit; fall back to local sum.
+  const lifetimeProfit =
+    breakdown.profit ?? capital?.salesProfit ?? allSales.reduce((a, s) => a + (Number(s.profitLoss) || 0), 0);
 
   const today = new Date().toLocaleDateString('en-KE', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -211,6 +215,9 @@ export default function Dashboard() {
   }, [salesSummary, allSales, bucket, from, to, dateWindowValid]);
 
   const maxIdx = barData.reduce((mi, d, i) => (d.revenue > (barData[mi]?.revenue || 0) ? i : mi), 0);
+  // Profit inside the selected Sales Overview window.
+  const windowRevenue = barData.reduce((a, d) => a + (Number(d.revenue) || 0), 0);
+  const windowProfit = barData.reduce((a, d) => a + (Number(d.profit) || 0), 0);
 
   const expByCat = useMemo(() => {
     const map = {};
@@ -267,10 +274,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+      {/* KPI cards — profits included */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-3">
         <Kpi label="TOTAL CAPITAL" value={formatKES(total)} />
         <Kpi label="SALES REVENUE" value={formatKES(salesRevenue)} />
+        <Kpi
+          label="TOTAL PROFIT"
+          value={`${lifetimeProfit >= 0 ? '+' : ''}${formatKES(lifetimeProfit)}`}
+          accent={lifetimeProfit >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}
+        />
         <Kpi label="EXPENDITURES" value={formatKES(expenditures)} />
         <Kpi label="LOANS OUT" value={formatKES(outstandingLoans)} />
       </div>
@@ -350,7 +362,7 @@ export default function Dashboard() {
       {/* Middle row */}
       <div className="grid lg:grid-cols-3 gap-3 mb-3">
         <div className="card p-4 lg:col-span-2">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
             <h2 className="text-[14px] font-bold">Sales Overview</h2>
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <input
@@ -381,6 +393,12 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+          <p className="text-[12px] text-[#8A8A8A] mb-3 tabular">
+            {formatKES(windowRevenue)} revenue in view ·{' '}
+            <span className={`font-bold ${windowProfit >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}`}>
+              {windowProfit >= 0 ? '+' : ''}{formatKES(windowProfit)} profit
+            </span>
+          </p>
           {summaryError && (
             <p className="text-[12px] font-medium text-[#E5484D] mb-2">{summaryError}</p>
           )}
@@ -399,17 +417,23 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 11, fill: '#8A8A8A' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} width={36} />
                 <Tooltip
                   contentStyle={{ background: '#1A1A1A', border: 'none', borderRadius: 10, color: '#fff', fontSize: 12 }}
-                  formatter={(v) => formatKES(v)}
+                  formatter={(v, name) => [formatKES(v), name === 'profit' ? 'Profit' : 'Revenue']}
+                  labelStyle={{ color: '#fff' }}
                 />
-                <Bar dataKey="revenue" radius={[6, 6, 2, 2]}>
+                <Bar dataKey="revenue" name="revenue" radius={[6, 6, 2, 2]}>
                   {barData.map((_, i) => (
                     <Cell key={i} fill={i === maxIdx ? '#E8620C' : '#E3DCCB'} />
                   ))}
                 </Bar>
+                <Bar dataKey="profit" name="profit" fill="#1F9D55" radius={[6, 6, 2, 2]} />
               </BarChart>
             </ResponsiveContainer>
             )}
           </div>
+          <p className="text-[11px] text-[#8A8A8A] mt-2 flex items-center gap-3">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#E8620C' }} /> Revenue</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ background: '#1F9D55' }} /> Profit</span>
+          </p>
           {loading && <p className="text-xs text-[#8A8A8A] mt-2">Loading…</p>}
         </div>
 

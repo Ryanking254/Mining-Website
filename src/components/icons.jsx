@@ -173,3 +173,14 @@ export function SecurityIcon(props) {
     </>
   );
 }
+
+export function AdminIcon(props) {
+  // crown / key — admin / owner
+  return base(
+    props,
+    <>
+      <path d="M3.5 8.5 6 11l3.5-4 2.5 3 3.5-4L18 11l2.5-2.5-1.5 9h-14L3.5 8.5Z" />
+      <path d="M5.5 20.5h13" />
+    </>
+  );
+}
