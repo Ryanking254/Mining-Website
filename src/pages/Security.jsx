@@ -53,14 +53,18 @@ export default function Security() {
     setError(''); setSuccess(''); setWorking(true);
     try {
       const wasOverdue = !getTwofaState(user).enabled && getTwofaState(user).overdue;
+      const wasAdmin = !!user?.isAdmin;
       const { data } = await confirm2fa(code.trim());
       setBackupCodes(data.backupCodes || []);
       setSetup(null);
       setCode('');
       setSuccess('Two-factor authentication is now enabled.');
       await load();
-      try { await refreshUser(); } catch { /* ignore — status already reloaded */ }
-      if (wasOverdue) navigate('/', { replace: true });
+      let updated = null;
+      try { updated = await refreshUser(); } catch { /* ignore — status already reloaded */ }
+      // Overdue accounts were force-redirected here — send them home
+      // (admins back to /admin, everyone else to /).
+      if (wasOverdue) navigate((updated?.isAdmin ?? wasAdmin) ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err?.response?.data?.error || 'Invalid code. Try again.');
     } finally {

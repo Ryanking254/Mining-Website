@@ -41,9 +41,13 @@ export default function Layout() {
   const showTwofaBanner = !user?.isSuspended && twofaReminder && (twofaReminder.overdue || !twofaDismissed);
 
   const links = user?.isAdmin
-    // Admins are locked to the admin console — no ledger pages, no security
-    // link. (/security stays directly reachable for authenticator setup.)
-    ? [{ to: '/admin', label: 'Admin', Icon: AdminIcon }]
+    // Admins get Admin + Security only — no ledger pages (Overview, Batches,
+    // Sales, Loans, Expenditures, Withdrawals). Security holds the mandatory
+    // authenticator setup + Google sign-in status.
+    ? [
+        { to: '/admin', label: 'Admin', Icon: AdminIcon },
+        { to: '/security', label: 'Security', Icon: SecurityIcon },
+      ]
     : baseLinks;
 
   const displayName = user?.name || user?.email || 'User';

@@ -31,9 +31,8 @@ export default function App() {
         <Route path="loans" element={<RequireNonAdmin><Loans /></RequireNonAdmin>} />
         <Route path="expenditures" element={<RequireNonAdmin><Expenditures /></RequireNonAdmin>} />
         <Route path="withdrawals" element={<RequireNonAdmin><Withdrawals /></RequireNonAdmin>} />
-        {/* Security stays reachable for admins (authenticator setup) but is
-            hidden from the admin sidebar — ledger pages above always bounce
-            admins back to /admin. */}
+        {/* Security is shared: regular users + admins (authenticator setup).
+            Ledger pages above bounce admins back to /admin. */}
         <Route path="security" element={<Security />} />
         <Route
           path="admin"
