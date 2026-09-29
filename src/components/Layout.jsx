@@ -41,7 +41,9 @@ export default function Layout() {
   const showTwofaBanner = !user?.isSuspended && twofaReminder && (twofaReminder.overdue || !twofaDismissed);
 
   const links = user?.isAdmin
-    ? [...baseLinks, { to: '/admin', label: 'Admin', Icon: AdminIcon }]
+    // Admins are locked to the admin console — no ledger pages, no security
+    // link. (/security stays directly reachable for authenticator setup.)
+    ? [{ to: '/admin', label: 'Admin', Icon: AdminIcon }]
     : baseLinks;
 
   const displayName = user?.name || user?.email || 'User';
@@ -125,14 +127,18 @@ export default function Layout() {
       </nav>
 
       <div className="mt-auto pt-4">
-        <div className="integrate-card">
-          <p className="text-[13px] font-bold leading-snug">Sales Excel report</p>
-          <p className="text-[12px] opacity-70 mt-0.5 leading-snug">Download all sales as an .xlsx Excel document for your records or accountant.</p>
-          <button onClick={handleDownload} disabled={downloading} className="details-btn download-btn">
-            <DownloadIcon className="w-3.5 h-3.5" />
-            {downloading ? 'Preparing…' : 'Download'}
-          </button>
-        </div>
+        {/* Ledger export is per-account — hidden for admins (they track
+            other users' data from the Admin console instead). */}
+        {!user?.isAdmin && (
+          <div className="integrate-card">
+            <p className="text-[13px] font-bold leading-snug">Sales Excel report</p>
+            <p className="text-[12px] opacity-70 mt-0.5 leading-snug">Download all sales as an .xlsx Excel document for your records or accountant.</p>
+            <button onClick={handleDownload} disabled={downloading} className="details-btn download-btn">
+              <DownloadIcon className="w-3.5 h-3.5" />
+              {downloading ? 'Preparing…' : 'Download'}
+            </button>
+          </div>
+        )}
         <button onClick={handleLogout} className="side-link w-full text-left">
           <span className="side-icon"><LogoutIcon className="w-[18px] h-[18px]" /></span>
           Log Out
@@ -168,7 +174,7 @@ export default function Layout() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search transactions…"
+                placeholder={user?.isAdmin ? 'Search users…' : 'Search transactions…'}
                 className="search-input"
               />
             </div>

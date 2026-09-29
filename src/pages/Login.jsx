@@ -7,7 +7,7 @@ import { getTwofaState } from '../lib/twofa';
 const googleConfigured = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
 export default function Login({ initialMode = 'login' }) {
-  const { login, register, loginWithGoogle, verify2fa } = useAuth();
+  const { login, register, loginWithGoogle, verify2fa, isAuthed, user } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState(initialMode); // 'login' | 'register'
   const [form, setForm] = useState({ name: '', email: '', password: '', startingCapital: '' });
@@ -22,9 +22,42 @@ export default function Login({ initialMode = 'login' }) {
 
   // Post-signup choice — when the account has no authenticator yet and is
   // still inside the grace period, offer setup now or later.
-  const [pendingSetup, setPendingSetup] = useState(null); // { daysLeft } | null
+  const [pendingSetup, setPendingSetup] = useState(null); // { daysLeft, user } | null
 
-  const done = () => navigate('/', { replace: true });
+  // Admins land on /admin, everyone else on /. Accepts the auth response
+  // ({ user }), a bare user, or nothing (falls back to localStorage).
+  const done = (dataOrUser) => {
+    const u = dataOrUser?.user ?? dataOrUser ?? null;
+    let isAdmin = u?.isAdmin;
+    if (isAdmin == null) {
+      try {
+        const raw = localStorage.getItem('ledger-user');
+        isAdmin = raw ? JSON.parse(raw)?.isAdmin : false;
+      } catch {
+        isAdmin = false;
+      }
+    }
+    navigate(isAdmin ? '/admin' : '/', { replace: true });
+  };
+
+  // Already signed in → bounce to the right home (admins to /admin).
+  if (isAuthed && !pendingToken && !pendingSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="card p-6 w-full max-w-[400px] text-center">
+          <p className="text-[13px] text-[#8A8A8A] mb-3">
+            You&apos;re already signed in{user?.isAdmin ? ' as admin' : ''}.
+          </p>
+          <button
+            onClick={() => done({ user })}
+            className="bg-black text-white px-4 py-2.5 text-[14px] font-semibold rounded-[10px] w-full"
+          >
+            Continue to {user?.isAdmin ? 'Admin' : 'Overview'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // After a password/Google sign-in that yields a session, decide whether to
   // offer authenticator setup. Returns true when navigation/UI was handled.
@@ -35,7 +68,7 @@ export default function Login({ initialMode = 'login' }) {
       navigate('/security', { replace: true });
       return true;
     }
-    setPendingSetup({ daysLeft: st.daysLeft });
+    setPendingSetup({ daysLeft: st.daysLeft, user: data.user });
     return true;
   };
 
@@ -51,6 +84,7 @@ export default function Login({ initialMode = 'login' }) {
           return;
         }
         if (maybeOfferSetup(data)) return;
+        done(data);
       } else {
         const payload = {
           name: form.name.trim(),
@@ -67,8 +101,8 @@ export default function Login({ initialMode = 'login' }) {
           return;
         }
         if (maybeOfferSetup(data)) return;
+        done(data);
       }
-      done();
     } catch (err) {
       setError(err?.response?.data?.error || 'Something went wrong. Try again.');
     } finally {
@@ -91,7 +125,7 @@ export default function Login({ initialMode = 'login' }) {
         return;
       }
       if (maybeOfferSetup(data)) return;
-      done();
+      done(data);
     } catch (err) {
       setError(err?.response?.data?.error || 'Google sign-in failed. Try again.');
     } finally {
@@ -108,8 +142,8 @@ export default function Login({ initialMode = 'login' }) {
     }
     setVerifying(true);
     try {
-      await verify2fa(pendingToken, twofaCode.trim(), { isBackup: twofaIsBackup });
-      done();
+      const u = await verify2fa(pendingToken, twofaCode.trim(), { isBackup: twofaIsBackup });
+      done({ user: u });
     } catch (err) {
       setError(err?.response?.data?.error || 'Invalid code. Try again.');
     } finally {
@@ -195,7 +229,7 @@ export default function Login({ initialMode = 'login' }) {
               Set up authenticator now
             </button>
             <button
-              onClick={done}
+              onClick={() => done(pendingSetup?.user)}
               className="px-4 py-2.5 text-[14px] font-semibold rounded-[10px] border border-[#E3DCCB] hover:border-black"
             >
               I&apos;ll do it later

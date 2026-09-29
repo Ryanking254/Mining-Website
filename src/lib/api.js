@@ -102,3 +102,13 @@ export const getCapitalAdditions = () => api.get('/capital/additions');
 export const getAdminUsers = () => api.get('/admin/users');
 export const setUserSuspension = (id, { suspended, reason }) =>
   api.patch(`/admin/users/${id}/suspend`, { suspended, reason });
+
+// --- Admin tracking: platform totals + any single account's ledger ---
+export const getAdminOverview = () => api.get('/admin/overview');
+export const getAdminUserSummary = (id) => api.get(`/admin/users/${id}/summary`);
+export const getAdminUserCapital = (id) => api.get(`/admin/users/${id}/capital`);
+export const getAdminUserBatches = (id) => api.get(`/admin/users/${id}/batches`);
+export const getAdminUserSales = (id) => api.get(`/admin/users/${id}/sales`);
+export const getAdminUserLoans = (id) => api.get(`/admin/users/${id}/loans`);
+export const getAdminUserExpenditures = (id) => api.get(`/admin/users/${id}/expenditures`);
+export const getAdminUserWithdrawals = (id) => api.get(`/admin/users/${id}/withdrawals`);

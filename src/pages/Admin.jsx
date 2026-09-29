@@ -1,10 +1,44 @@
-import { useEffect, useState } from 'react';
-import { getAdminUsers, setUserSuspension } from '../lib/api';
-import { formatDate } from '../lib/format';
+import { useEffect, useMemo, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import {
+  getAdminUsers,
+  setUserSuspension,
+  getAdminOverview,
+  getAdminUserSummary,
+  getAdminUserCapital,
+  getAdminUserBatches,
+  getAdminUserSales,
+  getAdminUserLoans,
+  getAdminUserExpenditures,
+  getAdminUserWithdrawals,
+  asArray,
+} from '../lib/api';
+import { formatDate, formatGrams, formatKES } from '../lib/format';
 import { useAuth } from '../lib/useAuth.jsx';
+
+const TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'batches', label: 'Batches' },
+  { key: 'sales', label: 'Sales' },
+  { key: 'loans', label: 'Loans' },
+  { key: 'expenditures', label: 'Expenses' },
+  { key: 'withdrawals', label: 'Withdrawals' },
+  { key: 'capital', label: 'Capital' },
+];
+
+function Stat({ label, value, accent }) {
+  return (
+    <div className="card p-3">
+      <p className="text-[11px] font-semibold tracking-wide text-[#8A8A8A]">{label}</p>
+      <p className={`text-[17px] font-bold tracking-tight tabular mt-1 ${accent || ''}`}>{value}</p>
+    </div>
+  );
+}
 
 export default function Admin() {
   const { user: me } = useAuth();
+  const outlet = useOutletContext() || {};
+  const globalQuery = typeof outlet.query === 'string' ? outlet.query : '';
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -12,13 +46,32 @@ export default function Admin() {
   const [busyId, setBusyId] = useState(null);
   const [rowError, setRowError] = useState({}); // userId -> error
 
+  // Platform totals across all accounts.
+  const [overview, setOverview] = useState(null);
+
+  // Tracking: which account is being inspected.
+  const [localSearch, setLocalSearch] = useState('');
+  const [selectedId, setSelectedId] = useState(null);
+  const [tab, setTab] = useState('overview');
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [tabRows, setTabRows] = useState([]);
+  const [tabLoading, setTabLoading] = useState(false);
+  const [tabError, setTabError] = useState('');
+  const [capitalDetail, setCapitalDetail] = useState(null);
+
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await getAdminUsers();
-      const list = Array.isArray(data) ? data : [];
+      const [{ data: userList }, overviewRes] = await Promise.all([
+        getAdminUsers(),
+        getAdminOverview().catch(() => ({ data: null })),
+      ]);
+      const list = Array.isArray(userList) ? userList : [];
       setUsers(list);
+      if (overviewRes?.data) setOverview(overviewRes.data);
       setReasons((prev) => {
         const next = { ...prev };
         for (const u of list) {
@@ -26,6 +79,11 @@ export default function Admin() {
         }
         return next;
       });
+      // Auto-select the first non-admin account so tracking shows data immediately.
+      if (selectedId == null) {
+        const first = list.find((u) => !u.isAdmin) || list[0];
+        if (first) setSelectedId(first.id);
+      }
     } catch (err) {
       setError(err?.response?.data?.error || 'Could not load users.');
     } finally {
@@ -35,7 +93,85 @@ export default function Admin() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const search = (localSearch || globalQuery || '').trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!search) return users;
+    return users.filter((u) =>
+      `${u.name || ''} ${u.email || ''}`.toLowerCase().includes(search)
+    );
+  }, [users, search]);
+
+  const selectedUser = useMemo(
+    () => users.find((u) => Number(u.id) === Number(selectedId)) || null,
+    [users, selectedId]
+  );
+
+  // Per-account summary for the tracked user.
+  useEffect(() => {
+    if (!selectedId) {
+      setSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setSummaryLoading(true);
+    setSummaryError('');
+    getAdminUserSummary(selectedId)
+      .then(({ data }) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setSummaryError(err?.response?.data?.error || 'Could not load summary.');
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  // Per-tab ledger rows for the tracked user.
+  useEffect(() => {
+    if (!selectedId || tab === 'overview') {
+      setTabRows([]);
+      setTabError('');
+      return;
+    }
+    let cancelled = false;
+    setTabLoading(true);
+    setTabError('');
+    const fetcher =
+      tab === 'batches' ? getAdminUserBatches
+      : tab === 'sales' ? getAdminUserSales
+      : tab === 'loans' ? getAdminUserLoans
+      : tab === 'expenditures' ? getAdminUserExpenditures
+      : tab === 'withdrawals' ? getAdminUserWithdrawals
+      : tab === 'capital' ? getAdminUserCapital
+      : null;
+    if (!fetcher) return undefined;
+    fetcher(selectedId)
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (tab === 'capital') {
+          setCapitalDetail(data);
+          setTabRows(asArray(data?.additions));
+        } else {
+          setTabRows(asArray(data));
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setTabError(err?.response?.data?.error || 'Could not load data.');
+      })
+      .finally(() => {
+        if (!cancelled) setTabLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, tab]);
 
   const handleToggle = async (u) => {
     const targetSuspended = !u.isSuspended;
@@ -65,13 +201,17 @@ export default function Admin() {
     }
   };
 
+  const counts = summary?.counts || {};
+  const nonAdmin = users.filter((u) => !u.isAdmin);
+
   return (
     <div>
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Admin</h1>
           <p className="text-[13px] text-[#8A8A8A]">
-            {users.length} account{users.length === 1 ? '' : 's'} · killswitch pauses a user&apos;s services
+            {users.length} account{users.length === 1 ? '' : 's'} · you only see this page ·
+            select an account below to track their data
           </p>
         </div>
         <button
@@ -87,6 +227,196 @@ export default function Admin() {
         <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mb-3">{error}</p>
       )}
 
+      {/* Platform totals */}
+      {overview && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <Stat label="ACCOUNTS" value={`${overview.regularUsers ?? nonAdmin.length} users`} />
+          <Stat
+            label="STATUS"
+            value={`${overview.activeUsers ?? ''} active · ${overview.suspendedUsers ?? 0} paused`}
+          />
+          <Stat label="TOTAL REVENUE" value={formatKES(overview.totalRevenue)} />
+          <Stat
+            label="TOTAL PROFIT"
+            value={`${(overview.totalProfit ?? 0) >= 0 ? '+' : ''}${formatKES(overview.totalProfit)}`}
+            accent={(overview.totalProfit ?? 0) >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}
+          />
+          <Stat label="STOCK BOUGHT" value={formatKES(overview.totalPurchaseCost)} />
+          <Stat label="EXPENDITURES" value={formatKES(overview.totalExpenditures)} />
+          <Stat label="WITHDRAWALS" value={formatKES(overview.totalWithdrawals)} />
+          <Stat label="LOANS OUT" value={formatKES(overview.loansOutstanding)} />
+        </div>
+      )}
+
+      {/* Tracking picker */}
+      <div className="card p-4 mb-3" id="track-user-data">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h2 className="text-[14px] font-bold">
+            Track user data
+            {selectedUser && (
+              <span className="font-normal text-[#8A8A8A]">
+                {' '}· {selectedUser.name || selectedUser.email}
+              </span>
+            )}
+          </h2>
+          <input
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            placeholder="Filter accounts by name or email…"
+            className="border border-[#E3DCCB] rounded-[10px] px-3 py-2 text-[13px] min-w-[220px]"
+          />
+        </div>
+        {loading && users.length === 0 ? (
+          <p className="text-[13px] text-[#8A8A8A] py-4 text-center">Loading users…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-[13px] text-[#8A8A8A] py-4 text-center">No accounts match.</p>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {filtered.map((u) => {
+              const active = Number(u.id) === Number(selectedId);
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    setSelectedId(u.id);
+                    setTab('overview');
+                  }}
+                  className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border text-[13px] font-semibold ${
+                    active ? 'bg-black text-white border-black' : 'bg-white border-[#E3DCCB] hover:border-black'
+                  }`}
+                  title={u.email}
+                >
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${active ? 'bg-white/20' : 'bg-[#F6F1E8]'}`}>
+                    {(u.name || u.email || 'U').slice(0, 1).toUpperCase()}
+                  </span>
+                  {u.name || u.email}
+                  {u.isAdmin && <span className="text-[10px] font-bold opacity-70">ADMIN</span>}
+                  {u.isSuspended && <span className="text-[10px] font-bold text-[#E5484D]">PAUSED</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tracked account detail */}
+        {selectedUser && (
+          <div className="mt-3 border-t border-[#F1EDE2] pt-3">
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold ${
+                    tab === t.key ? 'bg-black text-white' : 'text-[#8A8A8A] hover:text-black'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'overview' && (
+              <div>
+                {summaryLoading ? (
+                  <p className="text-[13px] text-[#8A8A8A] py-4 text-center">Loading summary…</p>
+                ) : summaryError ? (
+                  <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2">{summaryError}</p>
+                ) : summary ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <Stat label="CAPITAL NOW" value={formatKES(summary.currentCapital)} />
+                    <Stat label="SALES REVENUE" value={formatKES(summary.salesRevenue)} />
+                    <Stat
+                      label="PROFIT"
+                      value={`${(summary.salesProfit ?? 0) >= 0 ? '+' : ''}${formatKES(summary.salesProfit)}`}
+                      accent={(summary.salesProfit ?? 0) >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}
+                    />
+                    <Stat label="STOCK COST" value={formatKES(summary.purchaseCost)} />
+                    <Stat label="EXPENSES" value={formatKES(summary.expenditures)} />
+                    <Stat label="WITHDRAWALS" value={formatKES(summary.withdrawals)} />
+                    <Stat label="LOANS OUT" value={formatKES(summary.loansOutstanding)} />
+                    <Stat
+                      label="ACTIVITY"
+                      value={`${counts.batches ?? 0} batches · ${counts.sales ?? 0} sales · ${counts.loans ?? 0} loans`}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {tab !== 'overview' && (
+              <div>
+                {tabLoading ? (
+                  <p className="text-[13px] text-[#8A8A8A] py-4 text-center">Loading {tab}…</p>
+                ) : tabError ? (
+                  <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2">{tabError}</p>
+                ) : tab === 'capital' ? (
+                  <div>
+                    {capitalDetail && (
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                        <Stat label="STARTING" value={formatKES(capitalDetail.startingCapital)} />
+                        <Stat label="TOPPED UP" value={formatKES(capitalDetail.manualAdditions)} />
+                        <Stat label="NOW" value={formatKES(capitalDetail.currentCapital)} />
+                        <Stat label="SALES IN" value={formatKES(capitalDetail.salesRevenue)} />
+                      </div>
+                    )}
+                    {tabRows.length === 0 ? (
+                      <p className="text-[13px] text-[#8A8A8A] py-4 text-center">No top-ups recorded.</p>
+                    ) : (
+                      tabRows.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0">
+                          <span className="text-[#5C5C5C] truncate">{a.note || 'Manual top-up'} · {formatDate(a.createdAt)}</span>
+                          <span className="font-semibold tabular text-[#1F9D55]">+{formatKES(a.amount)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : tabRows.length === 0 ? (
+                  <p className="text-[13px] text-[#8A8A8A] py-4 text-center">No {tab} for this account yet.</p>
+                ) : (
+                  <div className="flex flex-col max-h-[320px] overflow-y-auto">
+                    {tab === 'batches' && tabRows.map((b) => (
+                      <div key={b.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0 gap-2">
+                        <span className="font-semibold truncate">{b.batchNumber} · {b.itemName} · {formatGrams(b.gramsRemaining)} left</span>
+                        <span className="tabular text-[#8A8A8A] shrink-0">{formatDate(b.purchaseDate)} · {b.status}</span>
+                      </div>
+                    ))}
+                    {tab === 'sales' && tabRows.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0 gap-2">
+                        <span className="font-semibold truncate">{s.batchNumber} · {formatGrams(s.gramsSold)} · {formatDate(s.saleDate)}</span>
+                        <span className="text-right shrink-0">
+                          <span className="block font-bold tabular">{formatKES(s.totalSellingPrice)}</span>
+                          <span className={`block text-[12px] tabular font-medium ${(s.profitLoss ?? 0) >= 0 ? 'text-[#1F9D55]' : 'text-[#E5484D]'}`}>
+                            {(s.profitLoss ?? 0) >= 0 ? '+' : ''}{formatKES(s.profitLoss)}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                    {tab === 'loans' && tabRows.map((l) => (
+                      <div key={l.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0 gap-2">
+                        <span className="font-semibold truncate">{l.borrowerName} · {l.status}</span>
+                        <span className="tabular shrink-0">{formatKES(l.amountGiven)} given · {formatKES(l.amountRepaid)} repaid</span>
+                      </div>
+                    ))}
+                    {tab === 'expenditures' && tabRows.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0 gap-2">
+                        <span className="font-semibold truncate">{e.category} · {e.description || '—'}</span>
+                        <span className="tabular shrink-0">{formatKES(e.amount)} · {formatDate(e.expenseDate)}</span>
+                      </div>
+                    ))}
+                    {tab === 'withdrawals' && tabRows.map((w) => (
+                      <div key={w.id} className="flex items-center justify-between text-[13px] py-2 border-b border-[#F1EDE2] last:border-0 gap-2">
+                        <span className="font-semibold truncate">{w.reason || 'Withdrawal'}</span>
+                        <span className="tabular shrink-0">{formatKES(w.amount)} · {formatDate(w.withdrawalDate)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="card p-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[14px] font-bold">All users</h2>
@@ -95,19 +425,27 @@ export default function Admin() {
 
         {loading && users.length === 0 ? (
           <p className="text-[13px] text-[#8A8A8A] py-8 text-center">Loading users…</p>
-        ) : users.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <p className="text-[13px] text-[#8A8A8A] py-8 text-center">No users yet.</p>
         ) : (
           <div className="flex flex-col">
-            {users.map((u) => {
+            {filtered.map((u) => {
               const isSelf = me && Number(me.id) === Number(u.id);
               const locked = isSelf || u.isAdmin;
               return (
                 <div key={u.id} className="py-3 border-b border-[#F1EDE2] last:border-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="w-10 h-10 rounded-xl bg-[#F6F1E8] flex items-center justify-center font-bold text-[15px] shrink-0">
+                    <button
+                      onClick={() => {
+                        setSelectedId(u.id);
+                        setTab('overview');
+                        document.querySelector('#track-user-data')?.scrollIntoView?.();
+                      }}
+                      title="Track this account's data"
+                      className="w-10 h-10 rounded-xl bg-[#F6F1E8] flex items-center justify-center font-bold text-[15px] shrink-0 hover:bg-[#EFE7D6]"
+                    >
                       {(u.name || u.email || 'U').slice(0, 1).toUpperCase()}
-                    </span>
+                    </button>
                     <span className="flex-1 min-w-[180px]">
                       <span className="block text-[13px] font-semibold truncate">
                         {u.name || 'Unnamed'}
@@ -126,6 +464,19 @@ export default function Admin() {
                         {u.email} · joined {formatDate(u.createdAt)}
                       </span>
                     </span>
+                    <button
+                      onClick={() => {
+                        setSelectedId(u.id);
+                        setTab('overview');
+                      }}
+                      className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border shrink-0 ${
+                        Number(selectedId) === Number(u.id)
+                          ? 'bg-black text-white border-black'
+                          : 'border-[#E3DCCB] hover:border-black'
+                      }`}
+                    >
+                      {Number(selectedId) === Number(u.id) ? 'Tracking' : 'Track'}
+                    </button>
                     <label className="flex items-center gap-2 text-[13px] font-medium shrink-0 select-none">
                       <span className={u.isSuspended ? 'text-[#B42318] font-bold' : 'text-[#8A8A8A]'}>
                         {u.isSuspended ? 'Paused' : 'Active'}
