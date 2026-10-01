@@ -187,7 +187,15 @@ export default function Dashboard() {
 
   const total = capital?.currentCapital ?? capital?.total ?? 0;
   const breakdown = capital?.breakdown ?? {};
-  const salesRevenue = breakdown.sales ?? salesSummary.reduce((a, s) => a + (Number(s.revenue) || 0), 0);
+  // Sales Revenue KPI = TODAY only (not lifetime since activation).
+  // Prefer the backend's CURDATE() total when available; fall back to summing
+  // today's rows locally so it works even before the backend is redeployed.
+  const todayISO = toISO(new Date());
+  const todayRevenueLocal = allSales.reduce((a, s) => (
+    String(s.saleDate || '').slice(0, 10) === todayISO ? a + (Number(s.totalSellingPrice) || 0) : a
+  ), 0);
+  const salesRevenue = capital?.salesRevenueToday ?? capital?.todayRevenue
+    ?? breakdown.todaySales ?? breakdown.todayRevenue ?? todayRevenueLocal;
   const expenditures = breakdown.expenditures ?? expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
   const outstandingLoans = loans.reduce((a, l) => a + ((Number(l.amountGiven) || 0) - (Number(l.amountRepaid) || 0)), 0);
   // Lifetime profit from sales (sum of profit_loss). Capital snapshot carries
@@ -277,7 +285,7 @@ export default function Dashboard() {
       {/* KPI cards — profits included */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-3">
         <Kpi label="TOTAL CAPITAL" value={formatKES(total)} />
-        <Kpi label="SALES REVENUE" value={formatKES(salesRevenue)} />
+        <Kpi label="SALES REVENUE (TODAY)" value={formatKES(salesRevenue)} />
         <Kpi
           label="TOTAL PROFIT"
           value={`${lifetimeProfit >= 0 ? '+' : ''}${formatKES(lifetimeProfit)}`}
