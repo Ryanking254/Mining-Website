@@ -7,6 +7,7 @@ import {
   request2faDisable,
   getMy2faDisableRequests,
   cancel2faDisableRequest,
+  disable2faDirect,
 } from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
 import { getTwofaState } from '../lib/twofa';
@@ -31,6 +32,8 @@ export default function Security() {
   const [showDisableForm, setShowDisableForm] = useState(false);
   const [disableReason, setDisableReason] = useState('');
   const [disableWorking, setDisableWorking] = useState(false);
+  // Admins have no approver above them — they disable their own 2FA directly.
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
 
   const pendingRequest = status?.disableRequest
     || history.find((r) => r.status === 'PENDING')
@@ -142,6 +145,25 @@ export default function Security() {
     }
   };
 
+  // Admins disable their own authenticator directly (no approver above them).
+  const handleDirectDisable = async () => {
+    if (!confirmingDisable) {
+      setConfirmingDisable(true);
+      return;
+    }
+    setError(''); setSuccess(''); setDisableWorking(true);
+    try {
+      await disable2faDirect();
+      setConfirmingDisable(false);
+      setSuccess('Two-factor authentication is now disabled.');
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Could not disable. Try again.');
+    } finally {
+      setDisableWorking(false);
+    }
+  };
+
   return (
     <div className="max-w-[640px]">
       <h1 className="text-xl font-bold tracking-tight">Security</h1>
@@ -189,7 +211,9 @@ export default function Security() {
           )}
           {status?.enabled && !pendingRequest && (
             <p className="text-[13px] text-[#5C5C5C] bg-[#F6F6F6] rounded-[10px] px-3 py-2 mt-4">
-              Two-factor authentication is enabled. You can ask an admin to disable it — it stays on until approved.
+              {user?.isAdmin
+                ? 'Two-factor authentication is enabled. As admin you can turn it off directly below — no approval needed.'
+                : 'Two-factor authentication is enabled. You can ask an admin to disable it — it stays on until approved.'}
             </p>
           )}
           {pendingRequest && (
@@ -285,8 +309,8 @@ export default function Security() {
             </div>
           )}
 
-          {/* Request disable/exemption — nothing changes until an admin approves. */}
-          {status?.enabled && !pendingRequest && !showDisableForm && (
+          {/* Request disable/exemption — regular users only; nothing changes until an admin approves. */}
+          {!user?.isAdmin && status?.enabled && !pendingRequest && !showDisableForm && (
             <button
               onClick={() => { setShowDisableForm(true); setError(''); setSuccess(''); }}
               className="text-[13px] font-semibold px-4 py-2.5 rounded-[10px] border border-[#E3DCCB] bg-white hover:border-black mt-4"
@@ -294,7 +318,43 @@ export default function Security() {
               Request to disable authenticator
             </button>
           )}
-          {!status?.enabled && !status?.exempt && !pendingRequest && !showDisableForm && (
+          {/* Admins disable their own authenticator directly — no approver above them. */}
+          {user?.isAdmin && status?.enabled && !pendingRequest && (
+            <div className="mt-4">
+              {!confirmingDisable ? (
+                <button
+                  onClick={() => { setConfirmingDisable(true); setError(''); setSuccess(''); }}
+                  className="text-[13px] font-semibold px-4 py-2.5 rounded-[10px] border border-[#E3DCCB] bg-white hover:border-black"
+                >
+                  Disable authenticator
+                </button>
+              ) : (
+                <div className="border border-[#FEDF89] bg-[#FFFAEB] rounded-[12px] p-4">
+                  <p className="text-[13px] font-bold text-[#5C4B00]">Turn off two-factor authentication?</p>
+                  <p className="text-[13px] text-[#5C5C5C] mt-1">
+                    Your account will no longer ask for an authenticator code at sign-in.
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={handleDirectDisable}
+                      disabled={disableWorking}
+                      className="bg-[#B42318] text-white px-4 py-2.5 text-[14px] font-semibold rounded-[10px] disabled:opacity-50"
+                    >
+                      {disableWorking ? 'Disabling…' : 'Yes, disable it'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingDisable(false)}
+                      disabled={disableWorking}
+                      className="text-[13px] font-semibold px-4 py-2.5 rounded-[10px] border border-[#E3DCCB] bg-white hover:border-black disabled:opacity-50"
+                    >
+                      Keep it on
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {!user?.isAdmin && !status?.enabled && !status?.exempt && !pendingRequest && !showDisableForm && (
             <div className="mt-4 border border-[#ECECEC] rounded-[12px] p-4">
               <p className="text-[13px] font-bold">Can&apos;t use an authenticator app?</p>
               <p className="text-[13px] text-[#8A8A8A] mt-1">
@@ -310,7 +370,7 @@ export default function Security() {
               </button>
             </div>
           )}
-          {!pendingRequest && showDisableForm && !status?.exempt && (
+          {!user?.isAdmin && !pendingRequest && showDisableForm && !status?.exempt && (
             <form onSubmit={handleRequestDisable} className="mt-4 border border-[#ECECEC] rounded-[12px] p-4">
               <p className="text-[13px] font-bold">
                 {status?.enabled ? 'Request to disable' : 'Request exemption'}

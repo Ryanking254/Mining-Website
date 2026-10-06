@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import {
   OverviewIcon, BatchesIcon, SalesIcon, LoansIcon,
-  ExpendituresIcon, WithdrawalsIcon, SecurityIcon, AdminIcon, SunIcon,
+  ExpendituresIcon, WithdrawalsIcon, SecurityIcon, AdminIcon, BellIcon, SunIcon,
   MoonIcon, SearchIcon, LogoutIcon, MenuIcon, DownloadIcon,
 } from './icons.jsx';
-import { exportSales } from '../lib/api';
+import { exportSales, getAdmin2faDisableRequests } from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
 import { getTwofaState } from '../lib/twofa';
 
@@ -34,18 +34,43 @@ export default function Layout() {
   const [downloading, setDownloading] = useState(false);
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   // Authenticator reminder — shown until 2FA is enabled. Dismissal lasts
   // until the next reload; overdue accounts cannot dismiss it.
   const [twofaDismissed, setTwofaDismissed] = useState(false);
   const twofaReminder = user && !user.twofaEnabled && !user.twofaExempt ? getTwofaState(user) : null;
   const showTwofaBanner = !user?.isSuspended && twofaReminder && (twofaReminder.overdue || !twofaDismissed);
 
+  // Pending authenticator requests — admin nav badge + shared with the
+  // Admin page via outlet context. Refreshed on every navigation.
+  const [pending2fa, setPending2fa] = useState({ count: 0, userIds: [] });
+  useEffect(() => {
+    if (!user?.isAdmin) return;
+    let cancelled = false;
+    getAdmin2faDisableRequests('PENDING')
+      .then(({ data }) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        setPending2fa({
+          count: list.length,
+          userIds: list.map((r) => Number(r?.user?.id)).filter((n) => Number.isInteger(n)),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPending2fa({ count: 0, userIds: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isAdmin, location.pathname]);
+
   const links = user?.isAdmin
-    // Admins get Admin + Security only — no ledger pages (Overview, Batches,
-    // Sales, Loans, Expenditures, Withdrawals). Security holds the mandatory
+    // Admins get Admin + Requests + Security only — no ledger pages (Overview,
+    // Batches, Sales, Loans, Expenditures, Withdrawals). Security holds the
     // authenticator setup + Google sign-in status.
     ? [
         { to: '/admin', label: 'Admin', Icon: AdminIcon },
+        { to: '/requests', label: 'Requests', Icon: BellIcon, badge: pending2fa.count },
         { to: '/security', label: 'Security', Icon: SecurityIcon },
       ]
     : baseLinks;
@@ -116,7 +141,7 @@ export default function Layout() {
 
       <p className="side-label">Main</p>
       <nav className="flex flex-col gap-0.5">
-        {links.map(({ to, label, end, Icon }) => (
+        {links.map(({ to, label, end, Icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -126,6 +151,11 @@ export default function Layout() {
           >
             <span className="side-icon"><Icon className="w-[18px] h-[18px]" /></span>
             {label}
+            {badge > 0 && (
+              <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#B42318] text-white">
+                {badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -266,7 +296,7 @@ export default function Layout() {
                     )}
                   </div>
                 )}
-                <Outlet context={{ query }} />
+                <Outlet context={{ query, pending2fa }} />
               </>
             )}
           </main>

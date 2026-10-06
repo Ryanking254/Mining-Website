@@ -11,6 +11,7 @@ import Expenditures from './pages/Expenditures.jsx';
 import Withdrawals from './pages/Withdrawals.jsx';
 import Security from './pages/Security.jsx';
 import Admin from './pages/Admin.jsx';
+import Requests from './pages/Requests.jsx';
 import Login from './pages/Login.jsx';
 
 export default function App() {
@@ -39,6 +40,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <Admin />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="requests"
+          element={
+            <RequireAdmin>
+              <Requests />
             </RequireAdmin>
           }
         />

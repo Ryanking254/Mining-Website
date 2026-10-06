@@ -70,6 +70,9 @@ export const confirm2fa = (code) => api.post('/auth/2fa/confirm', { code });
 export const request2faDisable = (reason) => api.post('/auth/2fa/disable-request', { reason });
 export const getMy2faDisableRequests = () => api.get('/auth/2fa/disable-requests');
 export const cancel2faDisableRequest = () => api.delete('/auth/2fa/disable-request');
+// Direct disable — admin-only (own account). Non-admins get a 403 and must
+// use the request flow above.
+export const disable2faDirect = () => api.post('/auth/2fa/disable');
 
 // --- Batches ---
 export const getBatches = (params) => api.get('/batches', { params });

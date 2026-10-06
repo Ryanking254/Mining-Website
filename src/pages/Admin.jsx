@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import {
   getAdminUsers,
   setUserSuspension,
@@ -11,9 +11,6 @@ import {
   getAdminUserLoans,
   getAdminUserExpenditures,
   getAdminUserWithdrawals,
-  getAdmin2faDisableRequests,
-  approve2faDisableRequest,
-  reject2faDisableRequest,
   setUser2faExempt,
   asArray,
 } from '../lib/api';
@@ -53,14 +50,18 @@ export default function Admin() {
   // Platform totals across all accounts.
   const [overview, setOverview] = useState(null);
 
-  // Authenticator disable requests (user asks, admin approves; 2FA stays ON meanwhile).
-  const [disableReqs, setDisableReqs] = useState([]);
-  const [reqLoading, setReqLoading] = useState(false);
-  const [reqError, setReqError] = useState('');
-  const [showReqHistory, setShowReqHistory] = useState(false);
-  const [rejectNotes, setRejectNotes] = useState({}); // requestId -> note text
-  const [busyReqId, setBusyReqId] = useState(null);
-  const [reqRowError, setReqRowError] = useState({}); // requestId -> error
+  // Pending authenticator requests come from the Layout outlet context
+  // (fetched once per navigation for the nav badge) — full management
+  // lives on the Requests page.
+  const pending2fa = useMemo(
+    () => outlet.pending2fa || { count: 0, userIds: [] },
+    [outlet.pending2fa]
+  );
+  const pendingCount = Number(pending2fa.count) || 0;
+  const pendingUserIds = useMemo(
+    () => new Set((pending2fa.userIds || []).map((n) => Number(n))),
+    [pending2fa]
+  );
   const [busyExemptId, setBusyExemptId] = useState(null);
 
   // Tracking: which account is being inspected.
@@ -109,64 +110,6 @@ export default function Admin() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const loadDisableRequests = async (history = showReqHistory) => {
-    setReqLoading(true);
-    setReqError('');
-    try {
-      const { data } = await getAdmin2faDisableRequests(history ? 'ALL' : 'PENDING');
-      setDisableReqs(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setReqError(err?.response?.data?.error || 'Could not load disable requests.');
-    } finally {
-      setReqLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadDisableRequests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const pendingCount = disableReqs.filter((r) => r.status === 'PENDING').length;
-  const pendingUserIds = useMemo(
-    () => new Set(disableReqs.filter((r) => r.status === 'PENDING').map((r) => Number(r.user?.id))),
-    [disableReqs]
-  );
-
-  const handleApprove = async (r) => {
-    setReqRowError((p) => ({ ...p, [r.id]: '' }));
-    setBusyReqId(r.id);
-    try {
-      await approve2faDisableRequest(r.id);
-      await Promise.all([loadDisableRequests(), load()]);
-    } catch (err) {
-      setReqRowError((p) => ({
-        ...p,
-        [r.id]: err?.response?.data?.error || 'Could not approve. Try again.',
-      }));
-    } finally {
-      setBusyReqId(null);
-    }
-  };
-
-  const handleReject = async (r) => {
-    const note = (rejectNotes[r.id] || '').trim();
-    setReqRowError((p) => ({ ...p, [r.id]: '' }));
-    setBusyReqId(r.id);
-    try {
-      await reject2faDisableRequest(r.id, note || undefined);
-      setRejectNotes((p) => ({ ...p, [r.id]: '' }));
-      await loadDisableRequests();
-    } catch (err) {
-      setReqRowError((p) => ({
-        ...p,
-        [r.id]: err?.response?.data?.error || 'Could not reject. Try again.',
-      }));
-    } finally {
-      setBusyReqId(null);
-    }
-  };
 
   const handleRevokeExempt = async (u) => {
     setRowError((p) => ({ ...p, [u.id]: '' }));
@@ -336,131 +279,21 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Authenticator disable requests */}
-      <div className="card p-4 mb-3" id="2fa-requests">
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="text-[14px] font-bold">
-            Authenticator disable requests
-            {pendingCount > 0 && (
-              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFFAEB] border border-[#FEDF89] text-[#5C4B00] align-middle">
-                {pendingCount} PENDING
-              </span>
-            )}
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                const next = !showReqHistory;
-                setShowReqHistory(next);
-                loadDisableRequests(next);
-              }}
-              className="text-[12px] font-semibold px-3 py-1.5 rounded-full border border-[#E3DCCB] hover:border-black"
-            >
-              {showReqHistory ? 'Show pending only' : 'Show history'}
-            </button>
-            <button
-              onClick={() => loadDisableRequests()}
-              disabled={reqLoading}
-              className="text-[12px] font-semibold px-3 py-1.5 rounded-full border border-[#E3DCCB] hover:border-black disabled:opacity-50"
-            >
-              {reqLoading ? 'Loading…' : 'Refresh'}
-            </button>
-          </div>
-        </div>
-        <p className="text-[12px] text-[#8A8A8A] mb-2 leading-snug">
-          Any account can ask — with 2FA on (wants it off) or never enabled, including overdue accounts
-          blocked from the ledger. Nothing changes until you decide. Approving turns an enabled authenticator
-          OFF, or exempts a never-enabled account from compulsory setup — either way they keep full ledger
-          access without 2FA. Declining keeps everything as is.
-        </p>
-        {reqError && (
-          <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mb-2">{reqError}</p>
-        )}
-        {reqLoading && disableReqs.length === 0 ? (
-          <p className="text-[13px] text-[#8A8A8A] py-4 text-center">Loading requests…</p>
-        ) : disableReqs.length === 0 ? (
-          <p className="text-[13px] text-[#8A8A8A] py-4 text-center">
-            {showReqHistory ? 'No requests yet.' : 'No pending requests.'}
-          </p>
-        ) : (
-          <div className="flex flex-col">
-            {disableReqs.map((r) => (
-              <div key={r.id} className="py-3 border-b border-[#F1EDE2] last:border-0">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="flex-1 min-w-[180px]">
-                    <span className="block text-[13px] font-semibold truncate">
-                      {r.user?.name || r.user?.email || `User #${r.user?.id}`}
-                      <span
-                        className={`ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle ${
-                          r.status === 'PENDING'
-                            ? 'bg-[#FFFAEB] border border-[#FEDF89] text-[#5C4B00]'
-                            : r.status === 'APPROVED'
-                              ? 'bg-[#E6F4EA] text-[#137333]'
-                              : r.status === 'REJECTED'
-                                ? 'bg-[#FDECEC] text-[#B42318]'
-                                : 'bg-[#F3F3F3] text-[#5C5C5C]'
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                    </span>
-                    <span className="block text-[12px] text-[#8A8A8A] truncate">
-                      {r.user?.email} · requested {formatDate(r.createdAt)}
-                      {r.user?.twofaEnabled === false && r.status === 'PENDING' ? ' · 2FA not enabled' : ''}
-                    </span>
-                  </span>
-                  {r.status === 'PENDING' && (
-                    <span className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => handleApprove(r)}
-                        disabled={busyReqId === r.id}
-                        className="px-4 py-2 text-[13px] font-semibold rounded-[10px] bg-black text-white hover:bg-[#333] disabled:opacity-50"
-                      >
-                        {busyReqId === r.id ? 'Saving…' : 'Approve (turn OFF)'}
-                      </button>
-                    </span>
-                  )}
-                </div>
-                {r.reason && (
-                  <p className="text-[12px] mt-1.5 px-3 py-2 rounded-[10px] bg-[#F6F1E8] text-[#5C5C5C]">
-                    <span className="font-bold">User&apos;s reason:</span> “{r.reason}”
-                  </p>
-                )}
-                {r.status === 'PENDING' && (
-                  <div className="mt-2 flex flex-col sm:flex-row gap-2 sm:items-start">
-                    <input
-                      value={rejectNotes[r.id] ?? ''}
-                      onChange={(e) => setRejectNotes((p) => ({ ...p, [r.id]: e.target.value }))}
-                      placeholder="Decline note for the user (optional)…"
-                      maxLength={1000}
-                      disabled={busyReqId === r.id}
-                      className="flex-1"
-                    />
-                    <button
-                      onClick={() => handleReject(r)}
-                      disabled={busyReqId === r.id}
-                      className="px-4 py-2.5 text-[13px] font-semibold rounded-[10px] h-[42px] whitespace-nowrap border border-[#E3DCCB] hover:border-[#B42318] hover:text-[#B42318] disabled:opacity-50"
-                    >
-                      {busyReqId === r.id ? 'Saving…' : 'Decline (keep ON)'}
-                    </button>
-                  </div>
-                )}
-                {r.status !== 'PENDING' && (
-                  <p className="text-[12px] text-[#8A8A8A] mt-1">
-                    Decided {r.decidedAt ? formatDate(r.decidedAt) : ''}
-                    {r.adminNote ? <> · note: “{r.adminNote}”</> : ''}
-                  </p>
-                )}
-                {reqRowError[r.id] && (
-                  <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mt-2">
-                    {reqRowError[r.id]}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Pending authenticator requests — managed on the Requests page. */}
+      {pendingCount > 0 && (
+        <Link
+          to="/requests"
+          className="card p-4 mb-3 flex items-center gap-3 hover:border-black"
+        >
+          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#FFFAEB] border border-[#FEDF89] text-[#5C4B00] shrink-0">
+            {pendingCount} PENDING
+          </span>
+          <span className="text-[13px]">
+            <span className="font-bold">Authenticator request{pendingCount === 1 ? '' : 's'} waiting.</span>{' '}
+            <span className="text-[#8A8A8A]">Review on the Requests page →</span>
+          </span>
+        </Link>
+      )}
 
       {/* Tracking picker */}
       <div className="card p-4 mb-3" id="track-user-data">
@@ -793,8 +626,9 @@ export default function Admin() {
       <p className="text-[12px] text-[#8A8A8A] mt-3 leading-snug">
         Pausing blocks that account&apos;s batches, sales, loans, expenditures, withdrawals and capital APIs
         (403 ACCOUNT_SUSPENDED). They stay signed in and see your reason. Only you (admin) can resume them.
-        Approving an authenticator request turns that account&apos;s 2FA off for good — “Require authenticator
-        again” reverses it (overdue accounts are then blocked until they re-enable).
+        Authenticator requests are handled on the <Link to="/requests" className="font-semibold underline">Requests page</Link> —
+        approving turns that account&apos;s 2FA off for good, and “Require authenticator again” below reverses it
+        (overdue accounts are then blocked until they re-enable).
       </p>
     </div>
   );
