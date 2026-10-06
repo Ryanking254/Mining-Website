@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { get2faStatus, setup2fa, confirm2fa } from '../lib/api';
+import {
+  get2faStatus,
+  setup2fa,
+  confirm2fa,
+  request2faDisable,
+  getMy2faDisableRequests,
+  cancel2faDisableRequest,
+} from '../lib/api';
 import { useAuth } from '../lib/useAuth.jsx';
 import { getTwofaState } from '../lib/twofa';
 
@@ -19,12 +26,27 @@ export default function Security() {
   const [backupCodes, setBackupCodes] = useState([]);
   const [working, setWorking] = useState(false);
 
+  // Disable-request flow (2FA stays ON until an admin approves)
+  const [history, setHistory] = useState([]);
+  const [showDisableForm, setShowDisableForm] = useState(false);
+  const [disableReason, setDisableReason] = useState('');
+  const [disableWorking, setDisableWorking] = useState(false);
+
+  const pendingRequest = status?.disableRequest
+    || history.find((r) => r.status === 'PENDING')
+    || null;
+  const lastDecision = history.find((r) => r.status === 'REJECTED' || r.status === 'APPROVED') || null;
+
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await get2faStatus();
+      const [{ data }, historyRes] = await Promise.all([
+        get2faStatus(),
+        getMy2faDisableRequests().catch(() => ({ data: [] })),
+      ]);
       setStatus(data);
+      setHistory(Array.isArray(historyRes?.data) ? historyRes.data : []);
     } catch (err) {
       setError(err?.response?.data?.error || 'Could not load 2FA status.');
     } finally {
@@ -72,6 +94,51 @@ export default function Security() {
     }
   };
 
+  const handleRequestDisable = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess(''); setDisableWorking(true);
+    try {
+      const { data } = await request2faDisable(disableReason.trim());
+      if (data?.request) {
+        setHistory((prev) => [data.request, ...prev.filter((r) => r.id !== data.request.id)]);
+      } else {
+        await load();
+      }
+      setShowDisableForm(false);
+      setDisableReason('');
+      setSuccess(data?.message || 'Request sent. Your authenticator stays enabled until an admin approves.');
+    } catch (err) {
+      // Already have a pending request (409) — surface it instead of erroring.
+      if (err?.response?.status === 409 && err?.response?.data?.request) {
+        const existing = err.response.data.request;
+        setHistory((prev) => [existing, ...prev.filter((r) => r.id !== existing.id)]);
+        setShowDisableForm(false);
+        setSuccess('You already have a pending request. Your authenticator stays enabled until an admin approves.');
+      } else {
+        setError(err?.response?.data?.error || 'Could not send the request. Try again.');
+      }
+    } finally {
+      setDisableWorking(false);
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    setError(''); setSuccess(''); setDisableWorking(true);
+    try {
+      const { data } = await cancel2faDisableRequest();
+      if (data?.request) {
+        setHistory((prev) => [data.request, ...prev.filter((r) => r.id !== data.request.id)]);
+      } else {
+        await load();
+      }
+      setSuccess('Disable request cancelled. Your authenticator stays enabled.');
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Could not cancel the request. Try again.');
+    } finally {
+      setDisableWorking(false);
+    }
+  };
+
   return (
     <div className="max-w-[640px]">
       <h1 className="text-xl font-bold tracking-tight">Security</h1>
@@ -105,15 +172,44 @@ export default function Security() {
               Authenticator setup is required — your grace period has ended. Enable it below to keep using the ledger.
             </p>
           )}
-          {user && !twofa.enabled && !twofa.overdue && (
+          {user && !twofa.enabled && !twofa.exempt && !twofa.overdue && (
             <p className="text-[13px] font-medium text-[#5C4B00] bg-[#FFFAEB] border border-[#FEDF89] rounded-[10px] px-3 py-2 mt-4">
               Reminder: the authenticator app becomes compulsory {twofa.graceDays} days after account creation
-              ({twofa.daysLeft} day{twofa.daysLeft === 1 ? '' : 's'} left). It cannot be disabled once enabled.
+              ({twofa.daysLeft} day{twofa.daysLeft === 1 ? '' : 's'} left).
             </p>
           )}
-          {status?.enabled && (
+          {(status?.exempt || user?.twofaExempt) && !status?.enabled && (
             <p className="text-[13px] text-[#5C5C5C] bg-[#F6F6F6] rounded-[10px] px-3 py-2 mt-4">
-              Two-factor authentication is enabled and mandatory — it cannot be disabled.
+              Two-factor authentication is disabled with admin approval. You can re-enable it below at any time
+              (re-enabling clears the approval).
+            </p>
+          )}
+          {status?.enabled && !pendingRequest && (
+            <p className="text-[13px] text-[#5C5C5C] bg-[#F6F6F6] rounded-[10px] px-3 py-2 mt-4">
+              Two-factor authentication is enabled. You can ask an admin to disable it — it stays on until approved.
+            </p>
+          )}
+          {status?.enabled && pendingRequest && (
+            <div className="text-[13px] bg-[#FFFAEB] border border-[#FEDF89] rounded-[10px] px-3 py-2 mt-4">
+              <p className="font-bold text-[#5C4B00]">Disable request pending</p>
+              <p className="text-[#5C5C5C] mt-0.5">
+                Sent {pendingRequest.createdAt ? new Date(pendingRequest.createdAt).toLocaleString() : ''}.
+                Your authenticator stays enabled until an admin approves.
+                {pendingRequest.reason ? ` Your reason: “${pendingRequest.reason}”` : ''}
+              </p>
+              <button
+                onClick={handleCancelRequest}
+                disabled={disableWorking}
+                className="mt-2 text-[13px] font-semibold px-3 py-1.5 rounded-[10px] border border-[#E3DCCB] bg-white hover:border-black disabled:opacity-50"
+              >
+                {disableWorking ? 'Cancelling…' : 'Cancel request'}
+              </button>
+            </div>
+          )}
+          {!pendingRequest && lastDecision?.status === 'REJECTED' && status?.enabled && (
+            <p className="text-[13px] text-[#5C5C5C] bg-[#F6F6F6] rounded-[10px] px-3 py-2 mt-4">
+              Your last disable request was declined by an admin.
+              {lastDecision.adminNote ? ` Note: “${lastDecision.adminNote}”` : ''} You can send a new request below.
             </p>
           )}
 
@@ -182,7 +278,48 @@ export default function Security() {
             </div>
           )}
 
-          {/* Disabling is not offered — 2FA is mandatory. */}
+          {/* Request disable — 2FA stays ON until an admin approves. */}
+          {status?.enabled && !pendingRequest && !showDisableForm && (
+            <button
+              onClick={() => { setShowDisableForm(true); setError(''); setSuccess(''); }}
+              className="text-[13px] font-semibold px-4 py-2.5 rounded-[10px] border border-[#E3DCCB] bg-white hover:border-black mt-4"
+            >
+              Request to disable authenticator
+            </button>
+          )}
+          {status?.enabled && !pendingRequest && showDisableForm && (
+            <form onSubmit={handleRequestDisable} className="mt-4 border border-[#ECECEC] rounded-[12px] p-4">
+              <p className="text-[13px] font-bold">Request to disable</p>
+              <p className="text-[13px] text-[#8A8A8A] mt-1">
+                Tell the admin why (optional). Your authenticator keeps working until the request is approved.
+              </p>
+              <textarea
+                value={disableReason}
+                onChange={(e) => setDisableReason(e.target.value)}
+                placeholder="e.g. Lost my phone, need to set up a new one…"
+                maxLength={1000}
+                rows={3}
+                className="w-full mt-2"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="submit"
+                  disabled={disableWorking}
+                  className="bg-black text-white px-4 py-2.5 text-[14px] font-semibold rounded-[10px] disabled:opacity-50"
+                >
+                  {disableWorking ? 'Sending…' : 'Send request'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowDisableForm(false); setDisableReason(''); }}
+                  disabled={disableWorking}
+                  className="text-[13px] font-semibold px-4 py-2.5 rounded-[10px] border border-[#E3DCCB] hover:border-black disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
 

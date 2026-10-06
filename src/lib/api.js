@@ -62,11 +62,14 @@ export const verify2faLogin = (payload) => api.post('/auth/2fa/verify-login', pa
 export const getMe = () => api.get('/auth/me');
 
 // --- 2FA (Google Authenticator / any TOTP app) ---
-// Note: 2FA is mandatory and cannot be disabled — there is intentionally no
-// disable endpoint on the frontend (the backend also rejects it with 403).
+// Disabling needs admin approval: the user sends a disable request and 2FA
+// stays ON until the admin approves (see admin helpers below).
 export const get2faStatus = () => api.get('/auth/2fa/status');
 export const setup2fa = () => api.post('/auth/2fa/setup');
 export const confirm2fa = (code) => api.post('/auth/2fa/confirm', { code });
+export const request2faDisable = (reason) => api.post('/auth/2fa/disable-request', { reason });
+export const getMy2faDisableRequests = () => api.get('/auth/2fa/disable-requests');
+export const cancel2faDisableRequest = () => api.delete('/auth/2fa/disable-request');
 
 // --- Batches ---
 export const getBatches = (params) => api.get('/batches', { params });
@@ -104,11 +107,20 @@ export const setUserSuspension = (id, { suspended, reason }) =>
   api.patch(`/admin/users/${id}/suspend`, { suspended, reason });
 
 // --- Admin tracking: platform totals + any single account's ledger ---
-export const getAdminOverview = () => api.get('/admin/overview');
-export const getAdminUserSummary = (id) => api.get(`/admin/users/${id}/summary`);
+export const getAdminOverview = () => api.get('/admin/overview');export const getAdminUserSummary = (id) => api.get(`/admin/users/${id}/summary`);
 export const getAdminUserCapital = (id) => api.get(`/admin/users/${id}/capital`);
 export const getAdminUserBatches = (id) => api.get(`/admin/users/${id}/batches`);
 export const getAdminUserSales = (id) => api.get(`/admin/users/${id}/sales`);
 export const getAdminUserLoans = (id) => api.get(`/admin/users/${id}/loans`);
 export const getAdminUserExpenditures = (id) => api.get(`/admin/users/${id}/expenditures`);
 export const getAdminUserWithdrawals = (id) => api.get(`/admin/users/${id}/withdrawals`);
+
+// --- Admin: authenticator disable requests (user asks, admin approves) ---
+export const getAdmin2faDisableRequests = (status = 'PENDING') =>
+  api.get('/admin/2fa/disable-requests', { params: { status } });
+export const approve2faDisableRequest = (id) =>
+  api.post(`/admin/2fa/disable-requests/${id}/approve`);
+export const reject2faDisableRequest = (id, note) =>
+  api.post(`/admin/2fa/disable-requests/${id}/reject`, { note });
+export const setUser2faExempt = (id, exempt) =>
+  api.patch(`/admin/users/${id}/2fa-exempt`, { exempt });

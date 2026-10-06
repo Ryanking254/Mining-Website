@@ -22,7 +22,7 @@ export default function RequireAuth({ children }) {
   // screen (Layout) instead, with the admin's reason.
   if (
     location.pathname !== '/security' &&
-    user && !user.twofaEnabled && !user.isSuspended && getTwofaState(user).overdue
+    user && !user.twofaEnabled && !user.twofaExempt && !user.isSuspended && getTwofaState(user).overdue
   ) {
     return <Navigate to="/security" replace />;
   }

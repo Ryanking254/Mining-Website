@@ -37,7 +37,7 @@ export default function Layout() {
   // Authenticator reminder — shown until 2FA is enabled. Dismissal lasts
   // until the next reload; overdue accounts cannot dismiss it.
   const [twofaDismissed, setTwofaDismissed] = useState(false);
-  const twofaReminder = user && !user.twofaEnabled ? getTwofaState(user) : null;
+  const twofaReminder = user && !user.twofaEnabled && !user.twofaExempt ? getTwofaState(user) : null;
   const showTwofaBanner = !user?.isSuspended && twofaReminder && (twofaReminder.overdue || !twofaDismissed);
 
   const links = user?.isAdmin
