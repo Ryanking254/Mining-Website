@@ -368,8 +368,10 @@ export default function Admin() {
           </div>
         </div>
         <p className="text-[12px] text-[#8A8A8A] mb-2 leading-snug">
-          The user&apos;s authenticator stays ON until you decide. Approving turns it OFF and exempts the
-          account from mandatory setup (they keep full ledger access). Rejecting keeps it ON.
+          Any account can ask — with 2FA on (wants it off) or never enabled, including overdue accounts
+          blocked from the ledger. Nothing changes until you decide. Approving turns an enabled authenticator
+          OFF, or exempts a never-enabled account from compulsory setup — either way they keep full ledger
+          access without 2FA. Declining keeps everything as is.
         </p>
         {reqError && (
           <p className="text-[13px] font-medium text-[#E5484D] bg-[#FDECEC] rounded-[10px] px-3 py-2 mb-2">{reqError}</p>
@@ -404,7 +406,7 @@ export default function Admin() {
                     </span>
                     <span className="block text-[12px] text-[#8A8A8A] truncate">
                       {r.user?.email} · requested {formatDate(r.createdAt)}
-                      {r.user?.twofaEnabled === false && r.status === 'PENDING' ? ' · 2FA already off' : ''}
+                      {r.user?.twofaEnabled === false && r.status === 'PENDING' ? ' · 2FA not enabled' : ''}
                     </span>
                   </span>
                   {r.status === 'PENDING' && (
