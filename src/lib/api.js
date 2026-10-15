@@ -92,6 +92,8 @@ export const repayLoan = (id, payload) => api.patch(`/loans/${id}/repay`, payloa
 // Top-up: lend an extra amount on top of an existing loan.
 export const topupLoan = (id, payload) => api.patch(`/loans/${id}/topup`, payload);
 export const getLoanTopups = (id) => api.get(`/loans/${id}/topups`);
+// Full event history for one loan: { repayments: [{ amount, repaidAt }], topups: [{ amount, createdAt }] }
+export const getLoanHistory = (id) => api.get(`/loans/${id}/history`);
 
 // --- Expenditures ---
 export const getExpenditures = () => api.get('/expenditures');

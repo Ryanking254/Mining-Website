@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOutletContext } from 'react-router-dom';
-import { getLoans, createLoan, repayLoan, topupLoan, asArray } from '../lib/api';
+import { getLoans, createLoan, repayLoan, topupLoan, getLoanHistory, asArray } from '../lib/api';
 import { formatKES, formatDate } from '../lib/format';
 
 const empty = { borrowerName: '', amountGiven: '', dateGiven: '', notes: '' };
@@ -9,6 +9,65 @@ const empty = { borrowerName: '', amountGiven: '', dateGiven: '', notes: '' };
 // Grouping key: case- and spacing-insensitive so "John Doe", "john doe"
 // and "  John   Doe " all count as the same person.
 const borrowerKey = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Full event timeline for one loan: borrowed → top-ups → repayments,
+// oldest first with a running balance after each event.
+// Fetches its own data on mount, so it can be reused in both tabs.
+function LoanTimeline({ loan }) {
+  const [hist, setHist] = useState({ loading: true, repayments: [], topups: [], error: '' });
+
+  useEffect(() => {
+    let cancelled = false;
+    getLoanHistory(loan.id)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setHist({ loading: false, repayments: asArray(data?.repayments), topups: asArray(data?.topups), error: '' });
+      })
+      .catch(() => {
+        if (!cancelled) setHist({ loading: false, repayments: [], topups: [], error: 'Could not load history.' });
+      });
+    return () => { cancelled = true; };
+  }, [loan.id]);
+
+  const events = useMemo(() => {
+    const ts = (v) => {
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const list = [
+      { key: `b-${loan.id}`, date: loan.dateGiven || loan.createdAt, kind: 'borrowed', amount: Number(loan.amountGiven) || 0, order: 0 },
+      ...hist.topups.map((t) => ({ key: `t-${t.id}`, date: t.createdAt, kind: 'topup', amount: Number(t.amount) || 0, order: 1 })),
+      ...hist.repayments.map((r) => ({ key: `r-${r.id}`, date: r.repaidAt, kind: 'repaid', amount: Number(r.amount) || 0, order: 2 })),
+    ];
+    list.sort((a, b) => ts(a.date) - ts(b.date) || a.order - b.order);
+    let bal = 0;
+    for (const e of list) {
+      bal += e.kind === 'repaid' ? -e.amount : e.amount;
+      e.balance = bal;
+    }
+    return list;
+  }, [loan, hist]);
+
+  if (hist.loading) return <p className="text-[12px] text-[#8A8A8A] py-1">Loading history…</p>;
+  if (hist.error) return <p className="text-[12px] font-medium text-[#E5484D] py-1">{hist.error}</p>;
+
+  const label = { borrowed: 'Borrowed', topup: 'Top-up borrowed', repaid: 'Repaid' };
+  return (
+    <div>
+      {events.map((e) => (
+        <div key={e.key} className="flex items-center justify-between gap-3 py-1.5 border-b border-[#F1EDE2] last:border-0">
+          <span className="text-[12px] text-[#5C5C5C]">{formatDate(e.date)} · {label[e.kind]}</span>
+          <span className="text-[12px] tabular shrink-0">
+            <span className={`font-bold ${e.kind === 'repaid' ? 'text-[#1F9D55]' : ''}`}>
+              {e.kind === 'repaid' ? '−' : '+'}{formatKES(e.amount)}
+            </span>
+            <span className="text-[#8A8A8A]"> · bal {formatKES(e.balance)}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Loans() {
   const { query = '' } = useOutletContext() ?? {};
@@ -22,6 +81,7 @@ export default function Loans() {
   // loan history + a quick "lend again" box (no retyping their details).
   const [tab, setTab] = useState('loans'); // 'loans' | 'borrowers'
   const [openBorrower, setOpenBorrower] = useState(null);
+  const [loanHistOpen, setLoanHistOpen] = useState({});
   const [relendAmount, setRelendAmount] = useState({});
   const [relendBusy, setRelendBusy] = useState({});
   const [relendError, setRelendError] = useState({});
@@ -259,6 +319,17 @@ export default function Loans() {
                       )}
                     </div>
                   )}
+                  <button
+                    onClick={() => setLoanHistOpen({ ...loanHistOpen, [l.id]: !loanHistOpen[l.id] })}
+                    className="mt-1.5 text-[12px] font-semibold text-[#8A8A8A] hover:text-black"
+                  >
+                    {loanHistOpen[l.id] ? 'Hide history ▴' : 'History ▾'}
+                  </button>
+                  {loanHistOpen[l.id] && (
+                    <div className="mt-1 border-t border-[#F1EDE2] pt-1">
+                      <LoanTimeline loan={l} />
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
@@ -328,17 +399,14 @@ export default function Loans() {
                     )}
                     <div className="mt-2">
                       {b.loans.map((l) => (
-                        <div key={l.id} className="flex items-center justify-between gap-3 py-2 border-b border-[#F1EDE2] last:border-0">
-                          <span className="text-[12px] text-[#5C5C5C]">
-                            {formatDate(l.dateGiven)}{l.notes ? ` · ${l.notes}` : ''}
-                          </span>
-                          <span className="flex items-center gap-2 shrink-0">
-                            <span className="text-[12px] tabular">
-                              <span className="font-bold">{formatKES(l.amountGiven)}</span>
-                              <span className="text-[#1F9D55]"> · {formatKES(l.amountRepaid)} repaid</span>
+                        <div key={l.id} className="py-2 border-b border-[#F1EDE2] last:border-0">
+                          <div className="flex items-center justify-between gap-3 mb-1">
+                            <span className="text-[12px] font-semibold">
+                              Loan · {formatDate(l.dateGiven)}{l.notes ? <span className="font-normal text-[#8A8A8A]"> · {l.notes}</span> : ''}
                             </span>
                             {l.status && <span className={`badge ${l.status === 'REPAID' ? 'badge-gray' : 'badge-orange'}`}>{l.status.toLowerCase()}</span>}
-                          </span>
+                          </div>
+                          <LoanTimeline loan={l} />
                         </div>
                       ))}
                     </div>
