@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOutletContext } from 'react-router-dom';
-import { getLoans, createLoan, repayLoan, asArray } from '../lib/api';
+import { getLoans, createLoan, repayLoan, topupLoan, asArray } from '../lib/api';
 import { formatKES, formatDate } from '../lib/format';
 
 const empty = { borrowerName: '', amountGiven: '', dateGiven: '', notes: '' };
@@ -12,6 +12,8 @@ export default function Loans() {
   const [form, setForm] = useState(empty);
   const [submitting, setSubmitting] = useState(false);
   const [repayAmount, setRepayAmount] = useState({});
+  const [topupAmount, setTopupAmount] = useState({});
+  const [topupError, setTopupError] = useState({});
 
   const load = () => getLoans().then((res) => setLoans(asArray(res.data))).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -47,6 +49,24 @@ export default function Loans() {
     await repayLoan(id, { amount });
     setRepayAmount({ ...repayAmount, [id]: '' });
     load();
+  };
+
+  // Lend extra on top of a pending loan (borrower takes another amount
+  // while the previous balance is still outstanding).
+  const handleTopup = async (id) => {
+    const amount = Number(topupAmount[id]);
+    if (!amount || amount <= 0) {
+      setTopupError({ ...topupError, [id]: 'Enter an amount above 0.' });
+      return;
+    }
+    setTopupError({ ...topupError, [id]: '' });
+    try {
+      await topupLoan(id, { amount });
+      setTopupAmount({ ...topupAmount, [id]: '' });
+      load();
+    } catch (err) {
+      setTopupError({ ...topupError, [id]: err?.response?.data?.error || 'Could not add top-up. Try again.' });
+    }
   };
 
   return (
@@ -105,14 +125,28 @@ export default function Loans() {
                 <div className="mt-2 ml-[52px]">
                   <div className="progress mb-2"><div style={{ width: `${pct}%`, background: '#1A1A1A' }} /></div>
                   {l.status !== 'REPAID' && (
-                    <div className="flex gap-2">
-                      <input
-                        type="number" step="0.01" placeholder="Repay amount"
-                        value={repayAmount[l.id] ?? ''}
-                        onChange={(e) => setRepayAmount({ ...repayAmount, [l.id]: e.target.value })}
-                        className="max-w-[180px]! text-[13px]! py-1.5!"
-                      />
-                      <button onClick={() => handleRepay(l.id)} className="text-[13px] font-semibold bg-[#FFF0E3] text-[#E8620C] rounded-[10px] px-4 hover:bg-[#E8620C] hover:text-white">Log</button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="number" step="0.01" placeholder="Repay amount"
+                          value={repayAmount[l.id] ?? ''}
+                          onChange={(e) => setRepayAmount({ ...repayAmount, [l.id]: e.target.value })}
+                          className="max-w-[180px]! text-[13px]! py-1.5!"
+                        />
+                        <button onClick={() => handleRepay(l.id)} className="text-[13px] font-semibold bg-[#FFF0E3] text-[#E8620C] rounded-[10px] px-4 hover:bg-[#E8620C] hover:text-white">Log</button>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="number" step="0.01" min="0" placeholder="Top-up amount"
+                          value={topupAmount[l.id] ?? ''}
+                          onChange={(e) => setTopupAmount({ ...topupAmount, [l.id]: e.target.value })}
+                          className="max-w-[180px]! text-[13px]! py-1.5!"
+                        />
+                        <button onClick={() => handleTopup(l.id)} className="text-[13px] font-semibold bg-black text-white rounded-[10px] px-4 py-1.5 hover:bg-[#333]">+ Top up</button>
+                      </div>
+                      {topupError[l.id] && (
+                        <p className="text-[12px] font-medium text-[#E5484D]">{topupError[l.id]}</p>
+                      )}
                     </div>
                   )}
                 </div>

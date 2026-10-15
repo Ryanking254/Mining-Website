@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { getBatches, createBatch, asArray } from '../lib/api';
 import { formatKES, formatGrams, formatDate } from '../lib/format';
 import { BatchesIcon } from '../components/icons.jsx';
@@ -13,7 +13,8 @@ export default function Batches() {
   const [form, setForm] = useState(empty);
   const [submitting, setSubmitting] = useState(false);
 
-  const load = () => getBatches().then((res) => setBatches(asArray(res.data))).catch(() => {});
+  // Available stock only — fully sold batches move to History automatically.
+  const load = () => getBatches({ status: 'OPEN' }).then((res) => setBatches(asArray(res.data))).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
@@ -46,9 +47,14 @@ export default function Batches() {
       <div className="flex items-start justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Batches</h1>
-          <p className="text-[13px] text-[#8A8A8A]">{batches.length} batches · {formatGrams(totalStock)} in stock</p>
+          <p className="text-[13px] text-[#8A8A8A]">{batches.length} available · {formatGrams(totalStock)} in stock</p>
         </div>
-        <span className="badge badge-orange">{filtered.length} shown</span>
+        <div className="flex items-center gap-2">
+          <span className="badge badge-orange">{filtered.length} shown</span>
+          <Link to="/history" className="text-[13px] font-semibold border border-[#E3DCCB] rounded-full px-4 py-2 bg-white hover:border-black">
+            History
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="card p-4 mb-3">
@@ -74,7 +80,7 @@ export default function Batches() {
 
       <div className="card p-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[14px] font-bold">All batches</h2>
+          <h2 className="text-[14px] font-bold">Available batches</h2>
           <span className="text-[12px] text-[#8A8A8A]">Bought · remaining · cost/g</span>
         </div>
         <AnimatePresence initial={false}>
@@ -99,7 +105,7 @@ export default function Batches() {
             );
           })}
         </AnimatePresence>
-        {filtered.length === 0 && <p className="text-[13px] text-[#8A8A8A] py-8 text-center">No batches found — add the first one above.</p>}
+        {filtered.length === 0 && <p className="text-[13px] text-[#8A8A8A] py-8 text-center">No available batches — add one above or <Link to="/history" className="font-semibold text-black underline">view sold history</Link>.</p>}
       </div>
     </div>
   );

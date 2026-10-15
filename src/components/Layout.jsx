@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import {
-  OverviewIcon, BatchesIcon, SalesIcon, LoansIcon,
+  OverviewIcon, BatchesIcon, SalesIcon, LoansIcon, HistoryIcon,
   ExpendituresIcon, WithdrawalsIcon, SecurityIcon, AdminIcon, BellIcon, SunIcon,
   MoonIcon, SearchIcon, LogoutIcon, MenuIcon, DownloadIcon,
 } from './icons.jsx';
@@ -13,6 +13,7 @@ const baseLinks = [
   { to: '/', label: 'Overview', end: true, Icon: OverviewIcon },
   { to: '/batches', label: 'Batches', Icon: BatchesIcon },
   { to: '/sales', label: 'Sales', Icon: SalesIcon },
+  { to: '/history', label: 'History', Icon: HistoryIcon },
   { to: '/loans', label: 'Loans', Icon: LoansIcon },
   { to: '/expenditures', label: 'Expenditures', Icon: ExpendituresIcon },
   { to: '/withdrawals', label: 'Withdrawals', Icon: WithdrawalsIcon },

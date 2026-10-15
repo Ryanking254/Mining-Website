@@ -136,7 +136,7 @@ export default function Dashboard() {
       getCapital().catch(() => ({ data: null })),
       getCapitalAdditions().catch(() => ({ data: [] })),
       getSales().catch(() => ({ data: [] })),
-      getBatches().catch(() => ({ data: [] })),
+      getBatches({ status: 'OPEN' }).catch(() => ({ data: [] })),
       getLoans().catch(() => ({ data: [] })),
       getExpenditures().catch(() => ({ data: [] })),
     ])

@@ -184,3 +184,16 @@ export function AdminIcon(props) {
     </>
   );
 }
+
+export function HistoryIcon(props) {
+  // clock with back arrow — sold batch history
+  return base(
+    props,
+    <>
+      <path d="M3.5 12a8.5 8.5 0 1 1 2.5 6" />
+      <path d="M3.5 12H6.5" />
+      <path d="m3.5 12 1.5-2.5" />
+      <path d="M12 7.5V12l3 2" />
+    </>
+  );
+}

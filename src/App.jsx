@@ -6,6 +6,7 @@ import RequireNonAdmin from './components/RequireNonAdmin.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Batches from './pages/Batches.jsx';
 import Sales from './pages/Sales.jsx';
+import History from './pages/History.jsx';
 import Loans from './pages/Loans.jsx';
 import Expenditures from './pages/Expenditures.jsx';
 import Withdrawals from './pages/Withdrawals.jsx';
@@ -29,6 +30,7 @@ export default function App() {
         <Route index element={<RequireNonAdmin><Dashboard /></RequireNonAdmin>} />
         <Route path="batches" element={<RequireNonAdmin><Batches /></RequireNonAdmin>} />
         <Route path="sales" element={<RequireNonAdmin><Sales /></RequireNonAdmin>} />
+        <Route path="history" element={<RequireNonAdmin><History /></RequireNonAdmin>} />
         <Route path="loans" element={<RequireNonAdmin><Loans /></RequireNonAdmin>} />
         <Route path="expenditures" element={<RequireNonAdmin><Expenditures /></RequireNonAdmin>} />
         <Route path="withdrawals" element={<RequireNonAdmin><Withdrawals /></RequireNonAdmin>} />

@@ -3,7 +3,7 @@ import { useAuth } from '../lib/useAuth.jsx';
 
 // Opposite of RequireAdmin: regular users only.
 // Admins are locked to /admin — any attempt to open a ledger page
-// (dashboard, batches, sales, loans, expenditures, withdrawals)
+// (dashboard, batches, sales, history, loans, expenditures, withdrawals)
 // bounces them back to the admin console.
 export default function RequireNonAdmin({ children }) {
   const { user, isAuthed, loading } = useAuth();

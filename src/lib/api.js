@@ -89,6 +89,9 @@ export const exportSales = () => api.get('/sales/export', { responseType: 'blob'
 export const getLoans = () => api.get('/loans');
 export const createLoan = (payload) => api.post('/loans', payload);
 export const repayLoan = (id, payload) => api.patch(`/loans/${id}/repay`, payload);
+// Top-up: lend an extra amount on top of an existing loan.
+export const topupLoan = (id, payload) => api.patch(`/loans/${id}/topup`, payload);
+export const getLoanTopups = (id) => api.get(`/loans/${id}/topups`);
 
 // --- Expenditures ---
 export const getExpenditures = () => api.get('/expenditures');
