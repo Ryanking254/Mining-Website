@@ -86,6 +86,25 @@ function Kpi({ label, value, accent }) {
   );
 }
 
+// Sales Overview tooltip — revenue in plain white so the green profit
+// figure is the one that draws the eye.
+function SalesTooltip({ active, payload, label }) {
+  if (!active || !payload || payload.length === 0) return null;
+  const revenue = payload.find((p) => p.dataKey === 'revenue');
+  const profit = payload.find((p) => p.dataKey === 'profit');
+  return (
+    <div style={{ background: '#1A1A1A', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}>
+      <p style={{ color: '#fff', fontWeight: 700, margin: '0 0 4px' }}>{label}</p>
+      {revenue != null && (
+        <p style={{ color: '#fff', margin: 0 }}>Revenue: {formatKES(revenue.value)}</p>
+      )}
+      {profit != null && (
+        <p style={{ color: '#4ADE80', margin: 0 }}>Profit: {formatKES(profit.value)}</p>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [capital, setCapital] = useState(null);
   const [bucket, setBucket] = useState('monthly');
@@ -423,11 +442,7 @@ export default function Dashboard() {
                 <CartesianGrid stroke="#F1EDE2" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#8A8A8A' }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#8A8A8A' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} width={36} />
-                <Tooltip
-                  contentStyle={{ background: '#1A1A1A', border: 'none', borderRadius: 10, color: '#fff', fontSize: 12 }}
-                  formatter={(v, name) => [formatKES(v), name === 'profit' ? 'Profit' : 'Revenue']}
-                  labelStyle={{ color: '#fff' }}
-                />
+                <Tooltip content={<SalesTooltip />} />
                 <Bar dataKey="revenue" name="revenue" radius={[6, 6, 2, 2]}>
                   {barData.map((_, i) => (
                     <Cell key={i} fill={i === maxIdx ? '#E8620C' : '#E3DCCB'} />
